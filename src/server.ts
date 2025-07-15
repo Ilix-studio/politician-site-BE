@@ -7,6 +7,7 @@ import corsOptions from "./config/corsOptions";
 import { errorHandler, routeNotFound } from "./middleware/errorMiddleware";
 import connectDB from "./config/dbConnection";
 
+import auth from "./routes/auth";
 import cloudinaryRoutes from "./routes/cloudinary";
 
 // Create Express application
@@ -32,7 +33,7 @@ app.use(express.urlencoded({ extended: true }));
 app.get("/", (req: Request, res: Response) => {
   res.status(200).json({
     success: true,
-    message: "Honda-Dealer Golaghat API is running",
+    message: "Politician Portfolio API is running",
     version: "1.0.0",
   });
 });
@@ -52,6 +53,7 @@ app.listen(PORT, () => {
   console.log(`Listening to http://localhost:${PORT}`);
 });
 
+app.use("/api/admin", auth);
 app.use("/api/cloudinary", cloudinaryRoutes);
 
 // Global error handling middleware
