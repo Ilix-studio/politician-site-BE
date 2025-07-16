@@ -1,4 +1,8 @@
-const allowOrigins = ["http://localhost:5173", ""];
+const allowOrigins = [
+  "http://localhost:5173",
+  "https://biswajitphukan.in/admin/login",
+  "https://biswajitphukan.in/admin/dashboard",
+];
 
 // Add environment-specific origins
 if (process.env.NODE_ENV === "production" && process.env.FRONTEND_URL) {

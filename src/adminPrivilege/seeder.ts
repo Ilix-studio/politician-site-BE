@@ -10,7 +10,7 @@ const seedAdmin = asyncHandler(async (req, res) => {
   try {
     // Check if admin already exists
     const existingAdmin = await AdminModel.findOne({
-      email: "praptiFoundation@gmail.com",
+      email: "politician@gmail.com",
     });
 
     if (!existingAdmin) {
