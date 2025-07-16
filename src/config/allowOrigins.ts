@@ -1,5 +1,8 @@
 const allowOrigins = [
   "http://localhost:5173",
+  "https://www.biswajitphukan.in/",
+  "https://biswajitphukan.in/",
+  "https://www.biswajitphukan.in",
   "https://biswajitphukan.in/admin/login",
   "https://biswajitphukan.in/admin/dashboard",
 ];
