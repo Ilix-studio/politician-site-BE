@@ -7,9 +7,10 @@
   "type": "commonjs",
   "main": "server.js",
   "scripts": {
-    "start": "node src/server.ts",
+    "start": "node dist/server.js",
     "server": "nodemon src/server.ts",
-    "build": "tsc"
+    "build": "tsc",
+    "start:prod": "npm run build && npm start"
   },
   "dependencies": {
     "@types/bcrypt": "^5.0.2",
