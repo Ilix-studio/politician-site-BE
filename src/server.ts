@@ -10,6 +10,7 @@ import connectDB from "./config/dbConnection";
 import auth from "./routes/auth";
 import cloudinaryRoutes from "./routes/cloudinary";
 import contactRoutes from "./routes/contact";
+import photosRoutes from "./routes/photos";
 
 // Create Express application
 const app: Application = express();
@@ -57,6 +58,7 @@ app.listen(PORT, () => {
 app.use("/api/admin", auth);
 app.use("/api/cloudinary", cloudinaryRoutes);
 app.use("/api/messages", contactRoutes);
+app.use("/api/photos", photosRoutes);
 
 // Global error handling middleware
 app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
