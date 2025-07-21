@@ -8,9 +8,6 @@ export interface IPhoto extends Document {
   date: Date;
   location: string;
   description: string;
-  tags: string[];
-  likes: number;
-  views: number;
   cloudinaryPublicId: string;
   isActive: boolean;
   createdAt: Date;
@@ -104,17 +101,6 @@ photoSchema.index({ tags: 1 });
 photoSchema.index({ date: -1 });
 photoSchema.index({ isActive: 1 });
 photoSchema.index({ createdAt: -1 });
-
-// Pre-save middleware to clean tags
-photoSchema.pre<IPhoto>("save", function (next) {
-  if (this.tags && this.tags.length > 0) {
-    this.tags = this.tags
-      .filter((tag) => tag.trim().length > 0)
-      .map((tag) => tag.trim().toLowerCase())
-      .filter((tag, index, self) => self.indexOf(tag) === index); // Remove duplicates
-  }
-  next();
-});
 
 const PhotoModel = mongoose.model<IPhoto>("Photo", photoSchema);
 export default PhotoModel;
