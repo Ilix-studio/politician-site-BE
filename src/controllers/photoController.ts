@@ -20,7 +20,6 @@ export const createPhoto = asyncHandler(async (req: Request, res: Response) => {
       date,
       location,
       description,
-      tags,
       cloudinaryPublicId,
     } = req.body;
 
@@ -38,7 +37,6 @@ export const createPhoto = asyncHandler(async (req: Request, res: Response) => {
       date: date ? new Date(date) : new Date(),
       location,
       description,
-      tags: Array.isArray(tags) ? tags : [],
       cloudinaryPublicId,
     });
 
@@ -68,8 +66,7 @@ export const uploadPhoto = asyncHandler(async (req: Request, res: Response) => {
       throw new Error("No file uploaded");
     }
 
-    const { alt, title, category, date, location, description, tags } =
-      req.body;
+    const { alt, title, category, date, location, description } = req.body;
 
     // Upload to Cloudinary
     const cloudinaryResult = await new Promise((resolve, reject) => {
@@ -103,10 +100,6 @@ export const uploadPhoto = asyncHandler(async (req: Request, res: Response) => {
       date: date ? new Date(date) : new Date(),
       location,
       description,
-      tags:
-        typeof tags === "string"
-          ? tags.split(",").map((t: string) => t.trim())
-          : tags || [],
       cloudinaryPublicId: uploadResult.public_id,
     });
 
@@ -141,7 +134,6 @@ export const getPhotos = asyncHandler(async (req: Request, res: Response) => {
       page = 1,
       limit = 12,
       category,
-      tags,
       search,
       sortBy = "createdAt",
       sortOrder = "desc",
@@ -156,11 +148,6 @@ export const getPhotos = asyncHandler(async (req: Request, res: Response) => {
 
     if (category && category !== "all") {
       filter.category = category;
-    }
-
-    if (tags) {
-      const tagArray = Array.isArray(tags) ? tags : [tags];
-      filter.tags = { $in: tagArray };
     }
 
     if (search) {
@@ -219,8 +206,6 @@ export const getPhoto = asyncHandler(async (req: Request, res: Response) => {
       throw new Error("Photo not found");
     }
 
-    // Increment views
-    photo.views += 1;
     await photo.save();
 
     res.status(200).json({
@@ -257,7 +242,7 @@ export const updatePhoto = asyncHandler(async (req: Request, res: Response) => {
       date,
       location,
       description,
-      tags,
+
       isActive,
     } = req.body;
 
@@ -268,7 +253,7 @@ export const updatePhoto = asyncHandler(async (req: Request, res: Response) => {
     if (date !== undefined) photo.date = new Date(date);
     if (location !== undefined) photo.location = location;
     if (description !== undefined) photo.description = description;
-    if (tags !== undefined) photo.tags = Array.isArray(tags) ? tags : [];
+
     if (isActive !== undefined) photo.isActive = isActive;
 
     const updatedPhoto = await photo.save();
