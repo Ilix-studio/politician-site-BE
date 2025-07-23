@@ -63,23 +63,7 @@ const photoSchema: Schema = new Schema(
       trim: true,
       maxlength: [500, "Description cannot exceed 500 characters"],
     },
-    tags: [
-      {
-        type: String,
-        trim: true,
-        lowercase: true,
-      },
-    ],
-    likes: {
-      type: Number,
-      default: 0,
-      min: 0,
-    },
-    views: {
-      type: Number,
-      default: 0,
-      min: 0,
-    },
+
     cloudinaryPublicId: {
       type: String,
       required: [true, "Cloudinary public ID is required"],
@@ -97,7 +81,6 @@ const photoSchema: Schema = new Schema(
 
 // Indexes for better query performance
 photoSchema.index({ category: 1 });
-photoSchema.index({ tags: 1 });
 photoSchema.index({ date: -1 });
 photoSchema.index({ isActive: 1 });
 photoSchema.index({ createdAt: -1 });

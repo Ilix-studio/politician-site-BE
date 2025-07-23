@@ -11,6 +11,8 @@ import auth from "./routes/auth";
 import cloudinaryRoutes from "./routes/cloudinary";
 import contactRoutes from "./routes/contact";
 import photosRoutes from "./routes/photos";
+import videosRoutes from "./routes/video";
+import pressRoutes from "./routes/press";
 
 // Create Express application
 const app: Application = express();
@@ -59,6 +61,8 @@ app.use("/api/admin", auth);
 app.use("/api/cloudinary", cloudinaryRoutes);
 app.use("/api/messages", contactRoutes);
 app.use("/api/photos", photosRoutes);
+app.use("/api/videos", videosRoutes);
+app.use("/api/press", pressRoutes);
 
 // Global error handling middleware
 app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
