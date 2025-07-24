@@ -73,7 +73,7 @@ export const uploadPhoto = asyncHandler(async (req: Request, res: Response) => {
       cloudinary.uploader
         .upload_stream(
           {
-            folder: "photos",
+            folder: "dynamic-images-for-politician",
             resource_type: "image",
             transformation: [
               { width: 1200, height: 800, crop: "limit" },

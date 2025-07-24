@@ -176,7 +176,7 @@ export const uploadPress = asyncHandler(async (req: Request, res: Response) => {
       const uploadStream = cloudinary.uploader.upload_stream(
         {
           resource_type: "image",
-          folder: "press-images",
+          folder: "politician-press-articles",
           quality: "auto",
           format: "jpg",
           transformation: [
