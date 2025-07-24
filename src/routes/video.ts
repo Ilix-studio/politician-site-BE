@@ -11,6 +11,7 @@ import {
 } from "../controllers/videoController";
 import { protect } from "../middleware/authMiddleware";
 import { apiLimiter } from "../middleware/rateLimitMiddleware";
+import { videoUploadConfig, handleMulterError } from "../config/multerConfig";
 
 const router = express.Router();
 
@@ -24,7 +25,15 @@ router.get("/:id", apiLimiter, getVideoById);
 router.use(protect); // All routes below require authentication
 
 // Video management
-router.post("/upload", uploadVideo);
+router.post(
+  "/upload",
+  videoUploadConfig.fields([
+    { name: "video", maxCount: 1 },
+    { name: "thumbnail", maxCount: 1 },
+  ]),
+  handleMulterError,
+  uploadVideo
+);
 router.post("/", createVideo);
 router.put("/:id", updateVideo);
 router.delete("/:id", deleteVideo);

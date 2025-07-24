@@ -133,10 +133,16 @@ export const getVideoById = asyncHandler(
  * @access  Private/Admin
  */
 export const uploadVideo = asyncHandler(async (req: Request, res: Response) => {
+  console.log("Upload request received:", {
+    files: req.files,
+    body: req.body,
+    headers: req.headers["content-type"],
+  });
+
   // Check if video file is uploaded
-  if (!req.files || !req.file) {
+  if (!req.files) {
     res.status(400);
-    throw new Error("Video file is required");
+    throw new Error("No files uploaded");
   }
 
   // Type assertion for multer files
@@ -150,8 +156,30 @@ export const uploadVideo = asyncHandler(async (req: Request, res: Response) => {
   const videoFile = files.video[0];
   const thumbnailFile = files.thumbnail ? files.thumbnail[0] : null;
 
-  const { title, description, category, date, duration }: VideoUploadData =
-    req.body;
+  console.log("Processing files:", {
+    videoFile: {
+      originalname: videoFile.originalname,
+      mimetype: videoFile.mimetype,
+      size: videoFile.size,
+    },
+    thumbnailFile: thumbnailFile
+      ? {
+          originalname: thumbnailFile.originalname,
+          mimetype: thumbnailFile.mimetype,
+          size: thumbnailFile.size,
+        }
+      : null,
+  });
+
+  const {
+    title,
+    description,
+    category,
+    date,
+    duration,
+    featured,
+    tags,
+  }: VideoUploadData = req.body;
 
   // Validate required fields
   if (!title || !description || !category || !date || !duration) {
@@ -159,74 +187,95 @@ export const uploadVideo = asyncHandler(async (req: Request, res: Response) => {
     throw new Error("All required fields must be provided");
   }
 
-  // Upload video to Cloudinary
-  const videoUploadResult = await new Promise((resolve, reject) => {
-    const uploadStream = cloudinary.uploader.upload_stream(
-      {
-        resource_type: "video",
-        folder: "dynamic-images-for-politician-videos",
-        quality: "auto",
-        format: "mp4",
-      },
-      (error, result) => {
-        if (error) reject(error);
-        else resolve(result);
-      }
-    );
-    uploadStream.end(videoFile.buffer);
-  });
-
-  const videoResult = videoUploadResult as any;
-
-  // Upload thumbnail if provided, otherwise use video thumbnail
-  let thumbnailResult;
-  if (thumbnailFile) {
-    thumbnailResult = await new Promise((resolve, reject) => {
+  try {
+    // Upload video to Cloudinary
+    const videoUploadResult = await new Promise((resolve, reject) => {
       const uploadStream = cloudinary.uploader.upload_stream(
         {
-          resource_type: "image",
-          folder: "politician-video-thumbnails",
+          resource_type: "video",
+          folder: "dynamic-images-for-politician-videos",
           quality: "auto",
-          format: "jpg",
-          transformation: [{ width: 1280, height: 720, crop: "fill" }],
+          format: "mp4",
         },
         (error, result) => {
-          if (error) reject(error);
-          else resolve(result);
+          if (error) {
+            console.error("Cloudinary video upload error:", error);
+            reject(error);
+          } else {
+            resolve(result);
+          }
         }
       );
-      uploadStream.end(thumbnailFile.buffer);
+      uploadStream.end(videoFile.buffer);
     });
-  } else {
-    // Generate thumbnail from video
-    thumbnailResult = await cloudinary.uploader.upload(videoResult.secure_url, {
-      resource_type: "video",
-      public_id: `${videoResult.public_id}_thumbnail`,
-      format: "jpg",
-      transformation: [{ width: 1280, height: 720, crop: "fill" }],
+
+    const videoResult = videoUploadResult as any;
+    console.log("Video uploaded to Cloudinary:", videoResult.public_id);
+
+    // Upload thumbnail if provided, otherwise use video thumbnail
+    let thumbnailResult;
+    if (thumbnailFile) {
+      thumbnailResult = await new Promise((resolve, reject) => {
+        const uploadStream = cloudinary.uploader.upload_stream(
+          {
+            resource_type: "image",
+            folder: "politician-video-thumbnails",
+            quality: "auto",
+            format: "jpg",
+            transformation: [{ width: 1280, height: 720, crop: "fill" }],
+          },
+          (error, result) => {
+            if (error) {
+              console.error("Cloudinary thumbnail upload error:", error);
+              reject(error);
+            } else {
+              resolve(result);
+            }
+          }
+        );
+        uploadStream.end(thumbnailFile.buffer);
+      });
+    } else {
+      // Generate thumbnail from video
+      thumbnailResult = await cloudinary.uploader.upload(
+        videoResult.secure_url,
+        {
+          resource_type: "video",
+          public_id: `${videoResult.public_id}_thumbnail`,
+          format: "jpg",
+          transformation: [{ width: 1280, height: 720, crop: "fill" }],
+        }
+      );
+    }
+
+    const thumbnail = thumbnailResult as any;
+    console.log("Thumbnail processed:", thumbnail.public_id);
+
+    // Create video document
+    const video = await VideoModel.create({
+      title,
+      description,
+      thumbnail: thumbnail.secure_url,
+      videoUrl: videoResult.secure_url,
+      date: new Date(date),
+      category,
+      duration,
+      publicId: videoResult.public_id,
+      thumbnailPublicId: thumbnail.public_id,
     });
+
+    console.log("Video saved to database:", video._id);
+
+    res.status(201).json({
+      success: true,
+      message: "Video uploaded successfully",
+      data: { video },
+    });
+  } catch (cloudinaryError: any) {
+    console.error("Cloudinary upload error:", cloudinaryError);
+    res.status(500);
+    throw new Error(`Upload failed: ${cloudinaryError.message}`);
   }
-
-  const thumbnail = thumbnailResult as any;
-
-  // Create video document
-  const video = await VideoModel.create({
-    title,
-    description,
-    thumbnail: thumbnail.secure_url,
-    videoUrl: videoResult.secure_url,
-    date: new Date(date),
-    category,
-    duration,
-    publicId: videoResult.public_id,
-    thumbnailPublicId: thumbnail.public_id,
-  });
-
-  res.status(201).json({
-    success: true,
-    message: "Video uploaded successfully",
-    data: { video },
-  });
 });
 /**
  * @desc    Create video with existing Cloudinary URLs
