@@ -164,7 +164,7 @@ export const uploadVideo = asyncHandler(async (req: Request, res: Response) => {
     const uploadStream = cloudinary.uploader.upload_stream(
       {
         resource_type: "video",
-        folder: "videos",
+        folder: "dynamic-images-for-politician-videos",
         quality: "auto",
         format: "mp4",
       },
@@ -185,7 +185,7 @@ export const uploadVideo = asyncHandler(async (req: Request, res: Response) => {
       const uploadStream = cloudinary.uploader.upload_stream(
         {
           resource_type: "image",
-          folder: "video-thumbnails",
+          folder: "politician-video-thumbnails",
           quality: "auto",
           format: "jpg",
           transformation: [{ width: 1280, height: 720, crop: "fill" }],
