@@ -13,6 +13,7 @@ import contactRoutes from "./routes/contact";
 import photosRoutes from "./routes/photos";
 import videosRoutes from "./routes/video";
 import pressRoutes from "./routes/press";
+import visitorRoutes from "./routes/visitor";
 
 // Create Express application
 const app: Application = express();
@@ -63,7 +64,7 @@ app.use("/api/messages", contactRoutes);
 app.use("/api/photos", photosRoutes);
 app.use("/api/videos", videosRoutes);
 app.use("/api/press", pressRoutes);
-
+app.use("/api/visitor", visitorRoutes);
 // Global error handling middleware
 app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
   console.error("Global error handler:", {
