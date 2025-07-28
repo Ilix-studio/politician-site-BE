@@ -9,7 +9,7 @@ export interface IVideo extends Document {
   thumbnail: string;
   videoUrl: string;
   date: Date;
-  category: "speech" | "event" | "interview" | "initiative";
+  category: mongoose.Types.ObjectId;
   duration: string;
   publicId: string; // Cloudinary public ID for easy deletion
   thumbnailPublicId?: string; // Optional thumbnail public ID
@@ -59,14 +59,20 @@ const videoSchema: Schema<IVideo> = new Schema(
       index: true, // For sorting by date
     },
     category: {
-      type: String,
+      type: Schema.Types.ObjectId,
+      ref: "Category",
       required: [true, "Category is required"],
-      enum: {
-        values: ["speech", "event", "interview", "initiative"],
-        message:
-          "Category must be one of: speech, event, interview, initiative",
+      validate: {
+        validator: async function (value: mongoose.Types.ObjectId) {
+          const CategoryModel = mongoose.model("Category");
+          const category = await CategoryModel.findOne({
+            _id: value,
+            type: "video",
+          });
+          return !!category;
+        },
+        message: "Invalid video category",
       },
-      index: true, // For category filtering
     },
     duration: {
       type: String,
@@ -121,9 +127,8 @@ const videoSchema: Schema<IVideo> = new Schema(
 
 // Compound indexes for efficient queries
 videoSchema.index({ category: 1, date: -1 }); // Category + date
-videoSchema.index({ featured: 1, date: -1 }); // Featured videos
 videoSchema.index({ isActive: 1, date: -1 }); // Active videos by date
-videoSchema.index({ title: "text", description: "text", tags: "text" }); // Text search
+videoSchema.index({ title: "text", description: "text" }); // Text search
 
 // Virtual for formatted duration
 videoSchema.virtual("formattedDuration").get(function (this: IVideo) {

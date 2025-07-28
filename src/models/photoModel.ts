@@ -4,7 +4,7 @@ export interface IPhoto extends Document {
   src: string;
   alt: string;
   title: string;
-  category: string;
+  category: mongoose.Types.ObjectId;
   date: Date;
   location: string;
   description: string;
@@ -34,20 +34,20 @@ const photoSchema: Schema = new Schema(
       maxlength: [100, "Title cannot exceed 100 characters"],
     },
     category: {
-      type: String,
+      type: Schema.Types.ObjectId,
+      ref: "Category",
       required: [true, "Category is required"],
-      trim: true,
-      enum: [
-        "political-events",
-        "community-service",
-        "public-rallies",
-        "meetings",
-        "awards",
-        "personal",
-        "campaigns",
-        "speeches",
-        "other",
-      ],
+      validate: {
+        validator: async function (value: mongoose.Types.ObjectId) {
+          const CategoryModel = mongoose.model("Category");
+          const category = await CategoryModel.findOne({
+            _id: value,
+            type: "photo",
+          });
+          return !!category;
+        },
+        message: "Invalid photo category",
+      },
     },
     date: {
       type: Date,

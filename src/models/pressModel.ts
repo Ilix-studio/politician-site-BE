@@ -8,7 +8,7 @@ export interface IPress extends Document {
   date: Date;
   image: string;
   link: string;
-  category: string;
+  category: mongoose.Types.ObjectId;
   author: string;
   readTime: string;
   content: string;
@@ -60,20 +60,20 @@ const pressSchema: Schema<IPress> = new Schema(
       },
     },
     category: {
-      type: String,
+      type: Schema.Types.ObjectId,
+      ref: "Category",
       required: [true, "Category is required"],
-      enum: [
-        "politics",
-        "economy",
-        "development",
-        "social",
-        "environment",
-        "education",
-        "healthcare",
-        "infrastructure",
-        "other",
-      ],
-      default: "politics",
+      validate: {
+        validator: async function (value: mongoose.Types.ObjectId) {
+          const CategoryModel = mongoose.model("Category");
+          const category = await CategoryModel.findOne({
+            _id: value,
+            type: "press",
+          });
+          return !!category;
+        },
+        message: "Invalid press category",
+      },
     },
     author: {
       type: String,
