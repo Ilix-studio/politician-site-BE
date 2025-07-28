@@ -17,7 +17,7 @@ const seedAdmin = asyncHandler(async (req, res) => {
       // Create admin user
       const admin = await AdminModel.create({
         name: "politician",
-        email: "politician@gmail.com",
+        email: "admin@gmail.com",
         password: "admin123",
       });
 
