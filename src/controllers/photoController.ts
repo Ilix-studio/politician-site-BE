@@ -2,6 +2,7 @@
 import { Request, Response } from "express";
 import asyncHandler from "express-async-handler";
 import PhotoModel, { IPhoto } from "../models/photoModel";
+import CategoryModel from "../models/categoryModel"; // Add this import
 import cloudinary from "../config/cloudinaryConfig";
 
 /**
@@ -18,6 +19,17 @@ export const uploadMultiplePhotos = asyncHandler(
 
     const files = req.files as Express.Multer.File[];
     const { title, category, date, location, description, altTexts } = req.body;
+
+    // Validate category exists and is type "photo"
+    const categoryDoc = await CategoryModel.findOne({
+      _id: category,
+      type: "photo",
+    });
+
+    if (!categoryDoc) {
+      res.status(400);
+      throw new Error("Invalid photo category");
+    }
 
     // Parse altTexts if it's a string
     let altTextsArray: string[] = [];
@@ -93,6 +105,17 @@ export const uploadPhoto = asyncHandler(async (req: Request, res: Response) => {
 
   const { alt, title, category, date, location, description } = req.body;
 
+  // Validate category exists and is type "photo"
+  const categoryDoc = await CategoryModel.findOne({
+    _id: category,
+    type: "photo",
+  });
+
+  if (!categoryDoc) {
+    res.status(400);
+    throw new Error("Invalid photo category");
+  }
+
   // Upload to Cloudinary
   const cloudinaryResult = await new Promise((resolve, reject) => {
     cloudinary.uploader
@@ -152,6 +175,17 @@ export const createPhoto = asyncHandler(async (req: Request, res: Response) => {
   if (!images || !Array.isArray(images) || images.length === 0) {
     res.status(400);
     throw new Error("At least one image is required");
+  }
+
+  // Validate category exists and is type "photo"
+  const categoryDoc = await CategoryModel.findOne({
+    _id: category,
+    type: "photo",
+  });
+
+  if (!categoryDoc) {
+    res.status(400);
+    throw new Error("Invalid photo category");
   }
 
   const photo = await PhotoModel.create({
@@ -273,6 +307,19 @@ export const updatePhoto = asyncHandler(async (req: Request, res: Response) => {
 
   const { images, title, category, date, location, description, isActive } =
     req.body;
+
+  // Validate category if it's being updated
+  if (category !== undefined) {
+    const categoryDoc = await CategoryModel.findOne({
+      _id: category,
+      type: "photo",
+    });
+
+    if (!categoryDoc) {
+      res.status(400);
+      throw new Error("Invalid photo category");
+    }
+  }
 
   // Update fields
   if (images !== undefined) photo.images = images;
