@@ -1,210 +1,8 @@
-// src/controllers/photoController.ts
 import { Request, Response } from "express";
 import asyncHandler from "express-async-handler";
 import PhotoModel, { IPhoto } from "../models/photoModel";
-import CategoryModel from "../models/categoryModel"; // Add this import
+import CategoryModel from "../models/categoryModel";
 import cloudinary from "../config/cloudinaryConfig";
-
-/**
- * Upload multiple photos to Cloudinary and save to database
- * @route POST /api/photos/upload-multiple
- * @access Private (Admin only)
- */
-export const uploadMultiplePhotos = asyncHandler(
-  async (req: Request, res: Response) => {
-    if (!req.files || !Array.isArray(req.files) || req.files.length === 0) {
-      res.status(400);
-      throw new Error("No files uploaded");
-    }
-
-    const files = req.files as Express.Multer.File[];
-    const { title, category, date, location, description, altTexts } = req.body;
-
-    // Validate category exists and is type "photo"
-    const categoryDoc = await CategoryModel.findOne({
-      _id: category,
-      type: "photo",
-    });
-
-    if (!categoryDoc) {
-      res.status(400);
-      throw new Error("Invalid photo category");
-    }
-
-    // Parse altTexts if it's a string
-    let altTextsArray: string[] = [];
-    if (typeof altTexts === "string") {
-      altTextsArray = JSON.parse(altTexts);
-    } else if (Array.isArray(altTexts)) {
-      altTextsArray = altTexts;
-    }
-
-    // Upload all files to Cloudinary
-    const uploadPromises = files.map((file, index) => {
-      return new Promise((resolve, reject) => {
-        cloudinary.uploader
-          .upload_stream(
-            {
-              folder: "dynamic-images-for-politician",
-              resource_type: "image",
-              transformation: [
-                { width: 1200, height: 800, crop: "limit" },
-                { quality: "auto" },
-                { format: "auto" },
-              ],
-            },
-            (error, result) => {
-              if (error) reject(error);
-              else
-                resolve({
-                  src: result!.secure_url,
-                  alt: altTextsArray[index] || title,
-                  cloudinaryPublicId: result!.public_id,
-                });
-            }
-          )
-          .end(file.buffer);
-      });
-    });
-
-    const uploadedImages = await Promise.all(uploadPromises);
-
-    // Create photo record with multiple images
-    const photo = await PhotoModel.create({
-      images: uploadedImages,
-      title,
-      category,
-      date: date ? new Date(date) : new Date(),
-      location,
-      description,
-    });
-
-    await photo.populate("category", "name type");
-
-    res.status(201).json({
-      success: true,
-      message: "Photos uploaded successfully",
-      data: {
-        photo,
-        imagesCount: uploadedImages.length,
-      },
-    });
-  }
-);
-
-/**
- * Upload single photo
- * @route POST /api/photos/upload
- * @access Private (Admin only)
- */
-export const uploadPhoto = asyncHandler(async (req: Request, res: Response) => {
-  if (!req.file) {
-    res.status(400);
-    throw new Error("No file uploaded");
-  }
-
-  const { alt, title, category, date, location, description } = req.body;
-
-  // Validate category exists and is type "photo"
-  const categoryDoc = await CategoryModel.findOne({
-    _id: category,
-    type: "photo",
-  });
-
-  if (!categoryDoc) {
-    res.status(400);
-    throw new Error("Invalid photo category");
-  }
-
-  // Upload to Cloudinary
-  const cloudinaryResult = await new Promise((resolve, reject) => {
-    cloudinary.uploader
-      .upload_stream(
-        {
-          folder: "dynamic-images-for-politician",
-          resource_type: "image",
-          transformation: [
-            { width: 1200, height: 800, crop: "limit" },
-            { quality: "auto" },
-            { format: "auto" },
-          ],
-        },
-        (error, result) => {
-          if (error) reject(error);
-          else resolve(result);
-        }
-      )
-      .end(req.file!.buffer);
-  });
-
-  const uploadResult = cloudinaryResult as any;
-
-  // Create photo record with single image
-  const photo = await PhotoModel.create({
-    images: [
-      {
-        src: uploadResult.secure_url,
-        alt: alt || title,
-        cloudinaryPublicId: uploadResult.public_id,
-      },
-    ],
-    title,
-    category,
-    date: date ? new Date(date) : new Date(),
-    location,
-    description,
-  });
-
-  await photo.populate("category", "name type");
-
-  res.status(201).json({
-    success: true,
-    message: "Photo uploaded successfully",
-    data: { photo },
-  });
-});
-
-/**
- * Create photo with existing image URLs
- * @route POST /api/photos
- * @access Private (Admin only)
- */
-export const createPhoto = asyncHandler(async (req: Request, res: Response) => {
-  const { images, title, category, date, location, description } = req.body;
-
-  if (!images || !Array.isArray(images) || images.length === 0) {
-    res.status(400);
-    throw new Error("At least one image is required");
-  }
-
-  // Validate category exists and is type "photo"
-  const categoryDoc = await CategoryModel.findOne({
-    _id: category,
-    type: "photo",
-  });
-
-  if (!categoryDoc) {
-    res.status(400);
-    throw new Error("Invalid photo category");
-  }
-
-  const photo = await PhotoModel.create({
-    images,
-    title,
-    category,
-    date: date ? new Date(date) : new Date(),
-    location,
-    description,
-  });
-
-  await photo.populate("category", "name type");
-
-  res.status(201).json({
-    success: true,
-    message: "Photo created successfully",
-    data: photo,
-  });
-});
 
 /**
  * Get all photos with pagination and filtering
@@ -225,6 +23,7 @@ export const getPhotos = asyncHandler(async (req: Request, res: Response) => {
   const limitNum = parseInt(limit as string, 10);
   const skip = (pageNum - 1) * limitNum;
 
+  // Build filter object
   const filter: any = { isActive: true };
 
   if (category && category !== "all") {
@@ -240,6 +39,7 @@ export const getPhotos = asyncHandler(async (req: Request, res: Response) => {
     ];
   }
 
+  // Build sort object
   const sort: any = {};
   sort[sortBy as string] = sortOrder === "asc" ? 1 : -1;
 
@@ -293,6 +93,316 @@ export const getPhoto = asyncHandler(async (req: Request, res: Response) => {
 });
 
 /**
+ * Create photo with existing image URLs
+ * @route POST /api/photos
+ * @access Private (Admin only)
+ */
+export const createPhoto = asyncHandler(async (req: Request, res: Response) => {
+  const { images, title, category, date, location, description } = req.body;
+
+  if (!images || !Array.isArray(images) || images.length === 0) {
+    res.status(400);
+    throw new Error("At least one image is required");
+  }
+
+  // Debug logging
+  console.log("Received category value:", category, typeof category);
+
+  // Validate category exists and is type "photo"
+  if (!category || typeof category !== "string") {
+    res.status(400);
+    throw new Error("Category is required and must be a string");
+  }
+
+  // Try to find by ObjectId first, if that fails, try by name
+  let categoryDoc;
+  let categoryId = category; // Use a separate variable for the actual ID
+
+  try {
+    // First attempt: find by ObjectId
+    categoryDoc = await CategoryModel.findOne({
+      _id: category,
+      type: "photo",
+    });
+  } catch (error) {
+    // If ObjectId cast fails, category might be a name instead of ID
+    console.log("ObjectId cast failed, trying to find by name:", category);
+  }
+
+  // If not found by ID, try to find by name
+  if (!categoryDoc) {
+    categoryDoc = await CategoryModel.findOne({
+      name: category,
+      type: "photo",
+    });
+
+    if (categoryDoc) {
+      console.log("Found category by name, using ID:", categoryDoc._id);
+      // Update the categoryId variable to use the correct ObjectId
+      categoryId = categoryDoc._id.toString();
+    }
+  }
+
+  if (!categoryDoc) {
+    res.status(400);
+    throw new Error(
+      `Invalid photo category: ${category}. Please ensure the category exists and is of type 'photo'.`
+    );
+  }
+
+  const photo = await PhotoModel.create({
+    images,
+    title,
+    category: categoryId, // Use the resolved category ID
+    date: date ? new Date(date) : new Date(),
+    location: location || undefined,
+    description: description || undefined,
+  });
+
+  await photo.populate("category", "name type");
+
+  res.status(201).json({
+    success: true,
+    message: "Photo created successfully",
+    data: photo,
+  });
+});
+
+/**
+ * Upload single photo
+ * @route POST /api/photos/upload
+ * @access Private (Admin only)
+ */
+export const uploadPhoto = asyncHandler(async (req: Request, res: Response) => {
+  if (!req.file) {
+    res.status(400);
+    throw new Error("No file uploaded");
+  }
+
+  const { alt, title, category, date, location, description } = req.body;
+
+  // Debug logging
+  console.log("Received category value:", category, typeof category);
+
+  // Validate category exists and is type "photo"
+  if (!category || typeof category !== "string") {
+    res.status(400);
+    throw new Error("Category is required and must be a string");
+  }
+
+  // Try to find by ObjectId first, if that fails, try by name
+  let categoryDoc;
+  let categoryId = category; // Use a separate variable for the actual ID
+
+  try {
+    // First attempt: find by ObjectId
+    categoryDoc = await CategoryModel.findOne({
+      _id: category,
+      type: "photo",
+    });
+  } catch (error) {
+    // If ObjectId cast fails, category might be a name instead of ID
+    console.log("ObjectId cast failed, trying to find by name:", category);
+  }
+
+  // If not found by ID, try to find by name
+  if (!categoryDoc) {
+    categoryDoc = await CategoryModel.findOne({
+      name: category,
+      type: "photo",
+    });
+
+    if (categoryDoc) {
+      console.log("Found category by name, using ID:", categoryDoc._id);
+      // Use the correct ObjectId for database insertion
+      categoryId = categoryDoc._id.toString();
+    }
+  }
+
+  if (!categoryDoc) {
+    res.status(400);
+    throw new Error(
+      `Invalid photo category: ${category}. Please ensure the category exists and is of type 'photo'.`
+    );
+  }
+
+  // Upload to Cloudinary
+  const cloudinaryResult = await new Promise((resolve, reject) => {
+    cloudinary.uploader
+      .upload_stream(
+        {
+          folder: "dynamic-images-for-politician",
+          resource_type: "image",
+          transformation: [
+            { width: 1200, height: 800, crop: "limit" },
+            { quality: "auto" },
+            { format: "auto" },
+          ],
+        },
+        (error, result) => {
+          if (error) reject(error);
+          else resolve(result);
+        }
+      )
+      .end(req.file!.buffer);
+  });
+
+  const uploadResult = cloudinaryResult as any;
+
+  // Create photo record with single image
+  const photo = await PhotoModel.create({
+    images: [
+      {
+        src: uploadResult.secure_url,
+        alt: alt || title,
+        cloudinaryPublicId: uploadResult.public_id,
+      },
+    ],
+    title,
+    category: categoryId, // Use the resolved category ID
+    date: date ? new Date(date) : new Date(),
+    location: location || undefined,
+    description: description || undefined,
+  });
+
+  await photo.populate("category", "name type");
+
+  res.status(201).json({
+    success: true,
+    message: "Photo uploaded successfully",
+    data: {
+      photo,
+      imagesCount: 1,
+    },
+  });
+});
+
+/**
+ * Upload multiple photos to Cloudinary and save to database
+ * @route POST /api/photos/upload-multiple
+ * @access Private (Admin only)
+ */
+export const uploadMultiplePhotos = asyncHandler(
+  async (req: Request, res: Response) => {
+    if (!req.files || !Array.isArray(req.files) || req.files.length === 0) {
+      res.status(400);
+      throw new Error("No files uploaded");
+    }
+
+    const files = req.files as Express.Multer.File[];
+    const { title, category, date, location, description, altTexts } = req.body;
+
+    // Debug logging
+    console.log("Received category value:", category, typeof category);
+
+    // Validate category exists and is type "photo"
+    if (!category || typeof category !== "string") {
+      res.status(400);
+      throw new Error("Category is required and must be a string");
+    }
+
+    // Try to find by ObjectId first, if that fails, try by name
+    let categoryDoc;
+    let categoryId = category; // Use a separate variable for the actual ID
+
+    try {
+      // First attempt: find by ObjectId
+      categoryDoc = await CategoryModel.findOne({
+        _id: category,
+        type: "photo",
+      });
+    } catch (error) {
+      // If ObjectId cast fails, category might be a name instead of ID
+      console.log("ObjectId cast failed, trying to find by name:", category);
+    }
+
+    // If not found by ID, try to find by name
+    if (!categoryDoc) {
+      categoryDoc = await CategoryModel.findOne({
+        name: category,
+        type: "photo",
+      });
+
+      if (categoryDoc) {
+        console.log("Found category by name, using ID:", categoryDoc._id);
+        // Update the categoryId variable to use the correct ObjectId
+        categoryId = categoryDoc._id.toString();
+      }
+    }
+
+    if (!categoryDoc) {
+      res.status(400);
+      throw new Error(
+        `Invalid photo category: ${category}. Please ensure the category exists and is of type 'photo'.`
+      );
+    }
+
+    // Parse altTexts if it's a string
+    let altTextsArray: string[] = [];
+    if (typeof altTexts === "string") {
+      try {
+        altTextsArray = JSON.parse(altTexts);
+      } catch (error) {
+        altTextsArray = [altTexts];
+      }
+    } else if (Array.isArray(altTexts)) {
+      altTextsArray = altTexts;
+    }
+
+    // Upload all files to Cloudinary
+    const uploadPromises = files.map((file, index) => {
+      return new Promise((resolve, reject) => {
+        cloudinary.uploader
+          .upload_stream(
+            {
+              folder: "dynamic-images-for-politician",
+              resource_type: "image",
+              transformation: [
+                { width: 1200, height: 800, crop: "limit" },
+                { quality: "auto" },
+                { format: "auto" },
+              ],
+            },
+            (error, result) => {
+              if (error) reject(error);
+              else
+                resolve({
+                  src: result!.secure_url,
+                  alt: altTextsArray[index] || title,
+                  cloudinaryPublicId: result!.public_id,
+                });
+            }
+          )
+          .end(file.buffer);
+      });
+    });
+
+    const uploadedImages = await Promise.all(uploadPromises);
+
+    // Create photo record with multiple images
+    const photo = await PhotoModel.create({
+      images: uploadedImages,
+      title,
+      category: categoryId, // Use the resolved category ID
+      date: date ? new Date(date) : new Date(),
+      location: location || undefined,
+      description: description || undefined,
+    });
+
+    await photo.populate("category", "name type");
+
+    res.status(201).json({
+      success: true,
+      message: "Photos uploaded successfully",
+      data: {
+        photo,
+        imagesCount: uploadedImages.length,
+      },
+    });
+  }
+);
+
+/**
  * Update photo
  * @route PUT /api/photos/:id
  * @access Private (Admin only)
@@ -326,8 +436,8 @@ export const updatePhoto = asyncHandler(async (req: Request, res: Response) => {
   if (title !== undefined) photo.title = title;
   if (category !== undefined) photo.category = category;
   if (date !== undefined) photo.date = new Date(date);
-  if (location !== undefined) photo.location = location;
-  if (description !== undefined) photo.description = description;
+  if (location !== undefined) photo.location = location || undefined;
+  if (description !== undefined) photo.description = description || undefined;
   if (isActive !== undefined) photo.isActive = isActive;
 
   const updatedPhoto = await photo.save();
@@ -368,3 +478,95 @@ export const deletePhoto = asyncHandler(async (req: Request, res: Response) => {
     message: "Photo deleted successfully",
   });
 });
+
+/**
+ * Get photos by category (Public)
+ * @route GET /api/photos/category/:category
+ * @access Public
+ */
+export const getPhotosByCategory = asyncHandler(
+  async (req: Request, res: Response) => {
+    const { category } = req.params;
+    const { limit = 12 } = req.query;
+
+    const limitNum = parseInt(limit as string, 10);
+
+    const photos = await PhotoModel.find({
+      category,
+      isActive: true,
+    })
+      .populate("category", "name type")
+      .sort({ createdAt: -1 })
+      .limit(limitNum)
+      .lean();
+
+    const total = await PhotoModel.countDocuments({
+      category,
+      isActive: true,
+    });
+
+    res.status(200).json({
+      success: true,
+      data: {
+        photos,
+        pagination: {
+          current: 1,
+          pages: Math.ceil(total / limitNum),
+          total,
+          hasNext: total > limitNum,
+          hasPrev: false,
+        },
+      },
+    });
+  }
+);
+
+/**
+ * Search photos (Public)
+ * @route GET /api/photos/search
+ * @access Public
+ */
+export const searchPhotos = asyncHandler(
+  async (req: Request, res: Response) => {
+    const { search, limit = 12 } = req.query;
+
+    if (!search) {
+      res.status(400);
+      throw new Error("Search query is required");
+    }
+
+    const limitNum = parseInt(limit as string, 10);
+
+    const filter = {
+      isActive: true,
+      $or: [
+        { title: { $regex: search, $options: "i" } },
+        { description: { $regex: search, $options: "i" } },
+        { location: { $regex: search, $options: "i" } },
+        { "images.alt": { $regex: search, $options: "i" } },
+      ],
+    };
+
+    const photos = await PhotoModel.find(filter)
+      .populate("category", "name type")
+      .sort({ createdAt: -1 })
+      .limit(limitNum)
+      .lean();
+
+    const total = await PhotoModel.countDocuments(filter);
+
+    res.status(200).json({
+      success: true,
+      data: {
+        photos,
+        pagination: {
+          current: 1,
+          pages: Math.ceil(total / limitNum),
+          total,
+          hasNext: total > limitNum,
+          hasPrev: false,
+        },
+      },
+    });
+  }
+);

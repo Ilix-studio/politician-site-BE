@@ -1,4 +1,4 @@
-import mongoose, { Document, Schema } from "mongoose";
+import mongoose, { Document, Schema, Types } from "mongoose";
 
 // Interface for individual image
 interface IImage {
@@ -10,7 +10,7 @@ interface IImage {
 export interface IPhoto extends Document {
   images: IImage[];
   title: string;
-  category: mongoose.Types.ObjectId;
+  category: Types.ObjectId;
   date: Date;
   location: string;
   description: string;
