@@ -1,3 +1,4 @@
+// src/routes/category.ts
 import express from "express";
 import {
   getCategoriesByType,

@@ -7,7 +7,6 @@ import {
   createVideo,
   updateVideo,
   deleteVideo,
-  getCategories,
 } from "../controllers/videoController";
 import { protect } from "../middleware/authMiddleware";
 import { apiLimiter } from "../middleware/rateLimitMiddleware";
@@ -17,8 +16,6 @@ const router = express.Router();
 
 // Public routes
 router.get("/", apiLimiter, getVideos);
-router.get("/categories", getCategories);
-
 router.get("/:id", apiLimiter, getVideoById);
 
 // Protected routes (Admin only)
@@ -32,6 +29,7 @@ router.post(
     { name: "thumbnail", maxCount: 1 },
   ]),
   handleMulterError,
+
   uploadVideo
 );
 router.post("/", createVideo);

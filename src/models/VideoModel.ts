@@ -1,7 +1,6 @@
-// src/models/videoModel.ts
+// src/models/VideoModel.ts
 import mongoose, { Document, Schema } from "mongoose";
 
-// Video data structure interface
 export interface IVideo extends Document {
   _id: string;
   title: string;
@@ -11,8 +10,8 @@ export interface IVideo extends Document {
   date: Date;
   category: mongoose.Types.ObjectId;
   duration: string;
-  publicId: string; // Cloudinary public ID for easy deletion
-  thumbnailPublicId?: string; // Optional thumbnail public ID
+  publicId: string;
+  thumbnailPublicId?: string;
   isActive: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -25,7 +24,7 @@ const videoSchema: Schema<IVideo> = new Schema(
       required: [true, "Title is required"],
       trim: true,
       maxlength: [200, "Title cannot exceed 200 characters"],
-      index: true, // For search optimization
+      index: true,
     },
     description: {
       type: String,
@@ -56,7 +55,7 @@ const videoSchema: Schema<IVideo> = new Schema(
     date: {
       type: Date,
       required: [true, "Date is required"],
-      index: true, // For sorting by date
+      index: true,
     },
     category: {
       type: Schema.Types.ObjectId,
@@ -79,7 +78,6 @@ const videoSchema: Schema<IVideo> = new Schema(
       required: [true, "Duration is required"],
       validate: {
         validator: function (v: string) {
-          // Accept formats like "2:30", "1:45:30", "0:45"
           return /^\d{1,2}:\d{2}(:\d{2})?$/.test(v);
         },
         message: "Duration must be in format MM:SS or HH:MM:SS",
@@ -95,7 +93,6 @@ const videoSchema: Schema<IVideo> = new Schema(
       type: String,
       index: true,
     },
-
     isActive: {
       type: Boolean,
       default: true,
@@ -126,19 +123,9 @@ const videoSchema: Schema<IVideo> = new Schema(
 );
 
 // Compound indexes for efficient queries
-videoSchema.index({ category: 1, date: -1 }); // Category + date
-videoSchema.index({ isActive: 1, date: -1 }); // Active videos by date
-videoSchema.index({ title: "text", description: "text" }); // Text search
-
-// Virtual for formatted duration
-videoSchema.virtual("formattedDuration").get(function (this: IVideo) {
-  return this.duration;
-});
-
-// Static methods
-videoSchema.statics.getCategories = function () {
-  return ["speech", "event", "interview", "initiative"];
-};
+videoSchema.index({ category: 1, date: -1 });
+videoSchema.index({ isActive: 1, date: -1 });
+videoSchema.index({ title: "text", description: "text" });
 
 const VideoModel = mongoose.model<IVideo>("Video", videoSchema);
 export default VideoModel;

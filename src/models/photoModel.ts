@@ -1,31 +1,55 @@
 import mongoose, { Document, Schema } from "mongoose";
 
-export interface IPhoto extends Document {
+// Interface for individual image
+interface IImage {
   src: string;
   alt: string;
+  cloudinaryPublicId: string;
+}
+
+export interface IPhoto extends Document {
+  images: IImage[];
   title: string;
   category: mongoose.Types.ObjectId;
   date: Date;
   location: string;
   description: string;
-  cloudinaryPublicId: string;
   isActive: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
 
+// Image schema
+const imageSchema = new Schema<IImage>({
+  src: {
+    type: String,
+    required: [true, "Image URL is required"],
+    trim: true,
+  },
+  alt: {
+    type: String,
+    required: [true, "Alt text is required"],
+    trim: true,
+    maxlength: [200, "Alt text cannot exceed 200 characters"],
+  },
+  cloudinaryPublicId: {
+    type: String,
+    required: [true, "Cloudinary public ID is required"],
+    trim: true,
+  },
+});
+
 const photoSchema: Schema = new Schema(
   {
-    src: {
-      type: String,
-      required: [true, "Photo URL is required"],
-      trim: true,
-    },
-    alt: {
-      type: String,
-      required: [true, "Alt text is required"],
-      trim: true,
-      maxlength: [200, "Alt text cannot exceed 200 characters"],
+    images: {
+      type: [imageSchema],
+      required: [true, "At least one image is required"],
+      validate: {
+        validator: function (images: IImage[]) {
+          return images && images.length > 0 && images.length <= 10; // Max 10 images
+        },
+        message: "Must have between 1 and 10 images",
+      },
     },
     title: {
       type: String,
@@ -62,12 +86,6 @@ const photoSchema: Schema = new Schema(
       type: String,
       trim: true,
       maxlength: [500, "Description cannot exceed 500 characters"],
-    },
-
-    cloudinaryPublicId: {
-      type: String,
-      required: [true, "Cloudinary public ID is required"],
-      trim: true,
     },
     isActive: {
       type: Boolean,

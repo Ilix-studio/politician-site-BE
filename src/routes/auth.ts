@@ -5,7 +5,6 @@ import { loginAdmin, logoutAdmin } from "../controllers/auth.controller";
 import { protect } from "../middleware/authMiddleware";
 
 import seedAdmin from "../adminPrivilege/seeder";
-import { validateLogin } from "../middleware/validationMiddleware";
 
 const router = express.Router();
 
@@ -16,7 +15,7 @@ if (process.env.NODE_ENV === "development") {
 }
 
 // Admin login with validation
-router.post("/login", validateLogin, loginAdmin);
+router.post("/login", loginAdmin);
 
 // Admin logout
 router.post("/logout", protect, logoutAdmin);

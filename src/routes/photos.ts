@@ -1,43 +1,43 @@
 import express from "express";
-import multer from "multer";
 import {
   createPhoto,
   uploadPhoto,
+  uploadMultiplePhotos,
   getPhotos,
   getPhoto,
   updatePhoto,
   deletePhoto,
-  getCategories,
 } from "../controllers/photoController";
 import { protect } from "../middleware/authMiddleware";
+import { photoUploadConfig, handleMulterError } from "../config/multerConfig";
 
 const router = express.Router();
 
-// Configure multer for file uploads
-const storage = multer.memoryStorage();
-const upload = multer({
-  storage,
-  limits: {
-    fileSize: 10 * 1024 * 1024, // 10MB limit
-  },
-  fileFilter: (req, file, cb) => {
-    // Check file type
-    if (file.mimetype.startsWith("image/")) {
-      cb(null, true);
-    } else {
-      cb(new Error("Only image files are allowed"));
-    }
-  },
-});
-
 // Public routes
 router.get("/", getPhotos);
-router.get("/categories", getCategories);
 router.get("/:id", getPhoto);
 
 // Protected routes (Admin only)
 router.post("/", protect, createPhoto);
-router.post("/upload", protect, upload.single("photo"), uploadPhoto);
+
+// Single photo upload
+router.post(
+  "/upload",
+  protect,
+  photoUploadConfig.single("photo"),
+  handleMulterError,
+  uploadPhoto
+);
+
+// Multiple photos upload
+router.post(
+  "/upload-multiple",
+  protect,
+  photoUploadConfig.array("photos", 10), // Max 10 photos
+  handleMulterError,
+  uploadMultiplePhotos
+);
+
 router.put("/:id", protect, updatePhoto);
 router.delete("/:id", protect, deletePhoto);
 

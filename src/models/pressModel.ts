@@ -1,23 +1,54 @@
 // src/models/pressModel.ts
 import mongoose, { Document, Schema } from "mongoose";
 
+// Interface for individual image
+interface IPressImage {
+  src: string;
+  alt: string;
+  cloudinaryPublicId: string;
+}
+
 export interface IPress extends Document {
   _id: string;
   title: string;
   source: string;
   date: Date;
-  image: string;
+  images: IPressImage[];
   link: string;
   category: mongoose.Types.ObjectId;
   author: string;
   readTime: string;
   content: string;
   excerpt: string;
-  imagePublicId?: string; // Cloudinary public ID for easy deletion
   isActive: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
+
+// Press image schema
+const pressImageSchema = new Schema<IPressImage>({
+  src: {
+    type: String,
+    required: [true, "Image URL is required"],
+    validate: {
+      validator: function (v: string) {
+        return /^https?:\/\/.+/.test(v);
+      },
+      message: "Image must be a valid URL",
+    },
+  },
+  alt: {
+    type: String,
+    required: [true, "Alt text is required"],
+    trim: true,
+    maxlength: [200, "Alt text cannot exceed 200 characters"],
+  },
+  cloudinaryPublicId: {
+    type: String,
+    required: [true, "Cloudinary public ID is required"],
+    trim: true,
+  },
+});
 
 const pressSchema: Schema<IPress> = new Schema(
   {
@@ -26,7 +57,7 @@ const pressSchema: Schema<IPress> = new Schema(
       required: [true, "Title is required"],
       trim: true,
       maxlength: [200, "Title cannot exceed 200 characters"],
-      index: true, // For search optimization
+      index: true,
     },
     source: {
       type: String,
@@ -39,14 +70,14 @@ const pressSchema: Schema<IPress> = new Schema(
       required: [true, "Date is required"],
       default: Date.now,
     },
-    image: {
-      type: String,
-      required: [true, "Image URL is required"],
+    images: {
+      type: [pressImageSchema],
+      required: [true, "At least one image is required"],
       validate: {
-        validator: function (v: string) {
-          return /^https?:\/\/.+/.test(v);
+        validator: function (images: IPressImage[]) {
+          return images && images.length > 0 && images.length <= 5; // Max 5 images for press
         },
-        message: "Image must be a valid URL",
+        message: "Must have between 1 and 5 images",
       },
     },
     link: {
@@ -100,10 +131,6 @@ const pressSchema: Schema<IPress> = new Schema(
       required: [true, "Excerpt is required"],
       trim: true,
       maxlength: [500, "Excerpt cannot exceed 500 characters"],
-    },
-    imagePublicId: {
-      type: String,
-      trim: true,
     },
     isActive: {
       type: Boolean,

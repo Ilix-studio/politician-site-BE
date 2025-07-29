@@ -1,9 +1,10 @@
+// src/controllers/videoController.ts
 import { Request, Response } from "express";
 import asyncHandler from "express-async-handler";
-
+import VideoModel from "../models/VideoModel";
+import CategoryModel from "../models/categoryModel";
 import cloudinary from "../config/cloudinaryConfig";
 import logger from "../utils/logger";
-import VideoModel from "../models/VideoModel";
 
 // Interface for query parameters
 interface VideoQueryParams {
@@ -20,7 +21,7 @@ interface VideoQueryParams {
 interface VideoUploadData {
   title: string;
   description: string;
-  category: "speech" | "event" | "interview" | "initiative";
+  category: string;
   date: string;
   duration: string;
   featured?: boolean;
@@ -72,6 +73,7 @@ export const getVideos = asyncHandler(async (req: Request, res: Response) => {
 
   // Execute query with pagination
   const videos = await VideoModel.find(query)
+    .populate("category", "name type")
     .sort(sortOptions)
     .skip(skip)
     .limit(limitNum)
@@ -108,7 +110,10 @@ export const getVideos = asyncHandler(async (req: Request, res: Response) => {
  */
 export const getVideoById = asyncHandler(
   async (req: Request, res: Response) => {
-    const video = await VideoModel.findById(req.params.id);
+    const video = await VideoModel.findById(req.params.id).populate(
+      "category",
+      "name type"
+    );
 
     if (!video) {
       res.status(404);
@@ -187,96 +192,104 @@ export const uploadVideo = asyncHandler(async (req: Request, res: Response) => {
     throw new Error("All required fields must be provided");
   }
 
-  try {
-    // Upload video to Cloudinary
-    const videoUploadResult = await new Promise((resolve, reject) => {
+  // Validate category exists and is of type 'video'
+  const categoryDoc = await CategoryModel.findOne({
+    _id: category,
+    type: "video",
+  });
+
+  if (!categoryDoc) {
+    res.status(400);
+    throw new Error("Invalid video category");
+  }
+
+  // Upload video to Cloudinary
+  const videoUploadResult = await new Promise((resolve, reject) => {
+    const uploadStream = cloudinary.uploader.upload_stream(
+      {
+        resource_type: "video",
+        folder: "dynamic-images-for-politician-videos",
+        quality: "auto",
+        format: "mp4",
+      },
+      (error, result) => {
+        if (error) {
+          console.error("Cloudinary video upload error:", error);
+          reject(error);
+        } else {
+          resolve(result);
+        }
+      }
+    );
+    uploadStream.end(videoFile.buffer);
+  });
+
+  const videoResult = videoUploadResult as any;
+  console.log("Video uploaded to Cloudinary:", videoResult.public_id);
+
+  // Upload thumbnail if provided, otherwise use video thumbnail
+  let thumbnailResult;
+  if (thumbnailFile) {
+    thumbnailResult = await new Promise((resolve, reject) => {
       const uploadStream = cloudinary.uploader.upload_stream(
         {
-          resource_type: "video",
-          folder: "dynamic-images-for-politician-videos",
+          resource_type: "image",
+          folder: "politician-video-thumbnails",
           quality: "auto",
-          format: "mp4",
+          format: "jpg",
+          transformation: [{ width: 1280, height: 720, crop: "fill" }],
         },
         (error, result) => {
           if (error) {
-            console.error("Cloudinary video upload error:", error);
+            console.error("Cloudinary thumbnail upload error:", error);
             reject(error);
           } else {
             resolve(result);
           }
         }
       );
-      uploadStream.end(videoFile.buffer);
+      uploadStream.end(thumbnailFile.buffer);
     });
-
-    const videoResult = videoUploadResult as any;
-    console.log("Video uploaded to Cloudinary:", videoResult.public_id);
-
-    // Upload thumbnail if provided, otherwise use video thumbnail
-    let thumbnailResult;
-    if (thumbnailFile) {
-      thumbnailResult = await new Promise((resolve, reject) => {
-        const uploadStream = cloudinary.uploader.upload_stream(
-          {
-            resource_type: "image",
-            folder: "politician-video-thumbnails",
-            quality: "auto",
-            format: "jpg",
-            transformation: [{ width: 1280, height: 720, crop: "fill" }],
-          },
-          (error, result) => {
-            if (error) {
-              console.error("Cloudinary thumbnail upload error:", error);
-              reject(error);
-            } else {
-              resolve(result);
-            }
-          }
-        );
-        uploadStream.end(thumbnailFile.buffer);
-      });
-    } else {
-      // Generate thumbnail from video
-      thumbnailResult = await cloudinary.uploader.upload(
-        videoResult.secure_url,
-        {
-          resource_type: "video",
-          public_id: `${videoResult.public_id}_thumbnail`,
-          format: "jpg",
-          transformation: [{ width: 1280, height: 720, crop: "fill" }],
-        }
-      );
-    }
-
-    const thumbnail = thumbnailResult as any;
-    console.log("Thumbnail processed:", thumbnail.public_id);
-
-    // Create video document
-    const video = await VideoModel.create({
-      title,
-      description,
-      thumbnail: thumbnail.secure_url,
-      videoUrl: videoResult.secure_url,
-      date: new Date(date),
-      category,
-      duration,
-      publicId: videoResult.public_id,
-      thumbnailPublicId: thumbnail.public_id,
+  } else {
+    // Generate thumbnail from video
+    thumbnailResult = await cloudinary.uploader.upload(videoResult.secure_url, {
+      resource_type: "video",
+      public_id: `${videoResult.public_id}_thumbnail`,
+      format: "jpg",
+      transformation: [{ width: 1280, height: 720, crop: "fill" }],
     });
-
-    console.log("Video saved to database:", video._id);
-
-    res.status(201).json({
-      success: true,
-      message: "Video uploaded successfully",
-      data: { video },
-    });
-  } catch (cloudinaryError: any) {
-    console.error("Cloudinary upload error:", cloudinaryError);
-    res.status(500);
-    throw new Error(`Upload failed: ${cloudinaryError.message}`);
   }
+
+  const thumbnail = thumbnailResult as any;
+  console.log("Thumbnail processed:", thumbnail.public_id);
+
+  // Create video document
+  const video = await VideoModel.create({
+    title,
+    description,
+    thumbnail: thumbnail.secure_url,
+    videoUrl: videoResult.secure_url,
+    date: new Date(date),
+    category,
+    duration,
+    publicId: videoResult.public_id,
+    thumbnailPublicId: thumbnail.public_id,
+  });
+
+  const populatedVideo = await VideoModel.findById(video._id).populate(
+    "category",
+    "name type"
+  );
+
+  console.log("Video saved to database:", video._id);
+
+  res.status(201).json({
+    success: true,
+    message: "Video uploaded successfully",
+    data: { video: populatedVideo },
+  });
 });
+
 /**
  * @desc    Create video with existing Cloudinary URLs
  * @route   POST /api/videos
@@ -310,6 +323,17 @@ export const createVideo = asyncHandler(async (req: Request, res: Response) => {
     throw new Error("All required fields must be provided");
   }
 
+  // Validate category exists and is of type 'video'
+  const categoryDoc = await CategoryModel.findOne({
+    _id: category,
+    type: "video",
+  });
+
+  if (!categoryDoc) {
+    res.status(400);
+    throw new Error("Invalid video category");
+  }
+
   const video = await VideoModel.create({
     title,
     description,
@@ -322,10 +346,15 @@ export const createVideo = asyncHandler(async (req: Request, res: Response) => {
     thumbnailPublicId,
   });
 
+  const populatedVideo = await VideoModel.findById(video._id).populate(
+    "category",
+    "name type"
+  );
+
   res.status(201).json({
     success: true,
     message: "Video created successfully",
-    data: { video },
+    data: { video: populatedVideo },
   });
 });
 
@@ -340,6 +369,19 @@ export const updateVideo = asyncHandler(async (req: Request, res: Response) => {
   if (!video) {
     res.status(404);
     throw new Error("Video not found");
+  }
+
+  // Validate category if provided
+  if (req.body.category) {
+    const categoryDoc = await CategoryModel.findOne({
+      _id: req.body.category,
+      type: "video",
+    });
+
+    if (!categoryDoc) {
+      res.status(400);
+      throw new Error("Invalid video category");
+    }
   }
 
   // Process tags if provided
@@ -363,7 +405,7 @@ export const updateVideo = asyncHandler(async (req: Request, res: Response) => {
       new: true,
       runValidators: true,
     }
-  );
+  ).populate("category", "name type");
 
   res.status(200).json({
     success: true,
@@ -385,22 +427,18 @@ export const deleteVideo = asyncHandler(async (req: Request, res: Response) => {
     throw new Error("Video not found");
   }
 
-  // Delete from Cloudinary (wrapped in try-catch since Cloudinary errors shouldn't stop DB deletion)
-  try {
-    // Delete video
+  // Delete from Cloudinary
+  if (video.publicId) {
     await cloudinary.uploader.destroy(video.publicId, {
       resource_type: "video",
     });
+  }
 
-    // Delete thumbnail if exists
-    if (video.thumbnailPublicId) {
-      await cloudinary.uploader.destroy(video.thumbnailPublicId, {
-        resource_type: "image",
-      });
-    }
-  } catch (cloudinaryError: any) {
-    logger.error(`Error deleting from Cloudinary: ${cloudinaryError.message}`);
-    // Continue with database deletion even if Cloudinary fails
+  // Delete thumbnail if exists
+  if (video.thumbnailPublicId) {
+    await cloudinary.uploader.destroy(video.thumbnailPublicId, {
+      resource_type: "image",
+    });
   }
 
   // Delete from database
@@ -413,17 +451,37 @@ export const deleteVideo = asyncHandler(async (req: Request, res: Response) => {
 });
 
 /**
- * @desc    Get video categories
+ * @desc    Get video categories with counts
  * @route   GET /api/videos/categories
  * @access  Public
  */
 export const getCategories = asyncHandler(
   async (req: Request, res: Response) => {
-    const categories = VideoModel.schema.path("category");
+    // Get all video categories
+    const categories = await CategoryModel.find({ type: "video" });
+
+    // Get video counts for each category
+    const categoriesWithCounts = await Promise.all(
+      categories.map(async (category) => {
+        const count = await VideoModel.countDocuments({
+          category: category._id,
+          isActive: true,
+        });
+
+        return {
+          id: category._id,
+          name: category.name,
+          count,
+        };
+      })
+    );
+
+    // Sort by count (descending)
+    categoriesWithCounts.sort((a, b) => b.count - a.count);
 
     res.status(200).json({
       success: true,
-      data: { categories },
+      data: categoriesWithCounts,
     });
   }
 );
