@@ -3,6 +3,7 @@ import asyncHandler from "express-async-handler";
 import PhotoModel, { IPhoto } from "../models/photoModel";
 import CategoryModel from "../models/categoryModel";
 import cloudinary from "../config/cloudinaryConfig";
+import { Types } from "mongoose";
 
 /**
  * Get all photos with pagination and filtering
@@ -415,26 +416,66 @@ export const updatePhoto = asyncHandler(async (req: Request, res: Response) => {
     throw new Error("Photo not found");
   }
 
+  if (!req.body) {
+    res.status(400);
+    throw new Error("Request body is required");
+  }
+
   const { images, title, category, date, location, description, isActive } =
     req.body;
 
-  // Validate category if it's being updated
+  // Validate and resolve category if it's being updated
   if (category !== undefined) {
-    const categoryDoc = await CategoryModel.findOne({
-      _id: category,
-      type: "photo",
-    });
+    // Debug logging
+    console.log("Received category value:", category, typeof category);
+
+    if (!category || typeof category !== "string") {
+      res.status(400);
+      throw new Error("Category must be a string");
+    }
+
+    // Try to find by ObjectId first, if that fails, try by name
+    let categoryDoc;
+    let categoryId = category;
+
+    try {
+      // First attempt: find by ObjectId
+      categoryDoc = await CategoryModel.findOne({
+        _id: category,
+        type: "photo",
+      });
+    } catch (error) {
+      // If ObjectId cast fails, category might be a name instead of ID
+      console.log("ObjectId cast failed, trying to find by name:", category);
+    }
+
+    // If not found by ID, try to find by name
+    if (!categoryDoc) {
+      categoryDoc = await CategoryModel.findOne({
+        name: category,
+        type: "photo",
+      });
+
+      if (categoryDoc) {
+        console.log("Found category by name, using ID:", categoryDoc._id);
+        categoryId = categoryDoc._id.toString();
+      }
+    }
 
     if (!categoryDoc) {
       res.status(400);
-      throw new Error("Invalid photo category");
+      throw new Error(
+        `Invalid photo category: ${category}. Please ensure the category exists and is of type 'photo'.`
+      );
     }
+
+    // Update with resolved category ID
+    photo.category = new Types.ObjectId(categoryDoc._id);
   }
 
-  // Update fields
+  // Update other fields
   if (images !== undefined) photo.images = images;
   if (title !== undefined) photo.title = title;
-  if (category !== undefined) photo.category = category;
   if (date !== undefined) photo.date = new Date(date);
   if (location !== undefined) photo.location = location || undefined;
   if (description !== undefined) photo.description = description || undefined;
@@ -449,7 +490,6 @@ export const updatePhoto = asyncHandler(async (req: Request, res: Response) => {
     data: updatedPhoto,
   });
 });
-
 /**
  * Delete photo
  * @route DELETE /api/photos/:id

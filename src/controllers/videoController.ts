@@ -4,7 +4,6 @@ import asyncHandler from "express-async-handler";
 import VideoModel from "../models/VideoModel";
 import CategoryModel from "../models/categoryModel";
 import cloudinary from "../config/cloudinaryConfig";
-import logger from "../utils/logger";
 
 // Interface for query parameters
 interface VideoQueryParams {
@@ -24,8 +23,6 @@ interface VideoUploadData {
   category: string;
   date: string;
   duration: string;
-  featured?: boolean;
-  tags?: string[];
 }
 
 /**
@@ -176,15 +173,8 @@ export const uploadVideo = asyncHandler(async (req: Request, res: Response) => {
       : null,
   });
 
-  const {
-    title,
-    description,
-    category,
-    date,
-    duration,
-    featured,
-    tags,
-  }: VideoUploadData = req.body;
+  const { title, description, category, date, duration }: VideoUploadData =
+    req.body;
 
   // Validate required fields
   if (!title || !description || !category || !date || !duration) {
@@ -192,15 +182,40 @@ export const uploadVideo = asyncHandler(async (req: Request, res: Response) => {
     throw new Error("All required fields must be provided");
   }
 
-  // Validate category exists and is of type 'video'
-  const categoryDoc = await CategoryModel.findOne({
-    _id: category,
-    type: "video",
-  });
+  // Try to find by ObjectId first, if that fails, try by name
+  let categoryDoc;
+  let categoryId = category; // Use a separate variable for the actual ID
+
+  try {
+    // First attempt: find by ObjectId
+    categoryDoc = await CategoryModel.findOne({
+      _id: category,
+      type: "video",
+    });
+  } catch (error) {
+    // If ObjectId cast fails, category might be a name instead of ID
+    console.log("ObjectId cast failed, trying to find by name:", category);
+  }
+
+  // If not found by ID, try to find by name
+  if (!categoryDoc) {
+    categoryDoc = await CategoryModel.findOne({
+      name: category,
+      type: "video",
+    });
+
+    if (categoryDoc) {
+      console.log("Found category by name, using ID:", categoryDoc._id);
+      // Use the correct ObjectId for database insertion
+      categoryId = categoryDoc._id.toString();
+    }
+  }
 
   if (!categoryDoc) {
     res.status(400);
-    throw new Error("Invalid video category");
+    throw new Error(
+      `Invalid video category: ${category}. Please ensure the category exists and is of type 'video'.`
+    );
   }
 
   // Upload video to Cloudinary
@@ -270,7 +285,7 @@ export const uploadVideo = asyncHandler(async (req: Request, res: Response) => {
     thumbnail: thumbnail.secure_url,
     videoUrl: videoResult.secure_url,
     date: new Date(date),
-    category,
+    category: categoryId, // Use the resolved category ID
     duration,
     publicId: videoResult.public_id,
     thumbnailPublicId: thumbnail.public_id,
@@ -450,12 +465,32 @@ export const deleteVideo = asyncHandler(async (req: Request, res: Response) => {
   });
 });
 
+// ============ CATEGORY MANAGEMENT FUNCTIONS ============
+
 /**
- * @desc    Get video categories with counts
+ * @desc    Get video categories
  * @route   GET /api/videos/categories
  * @access  Public
  */
-export const getCategories = asyncHandler(
+export const getVideoCategories = asyncHandler(
+  async (req: Request, res: Response) => {
+    const categories = await CategoryModel.find({ type: "video" }).sort({
+      name: 1,
+    });
+
+    res.status(200).json({
+      success: true,
+      data: categories,
+    });
+  }
+);
+
+/**
+ * @desc    Get video categories with counts
+ * @route   GET /api/videos/categories/counts
+ * @access  Public
+ */
+export const getVideoCategoriesWithCounts = asyncHandler(
   async (req: Request, res: Response) => {
     // Get all video categories
     const categories = await CategoryModel.find({ type: "video" });
@@ -482,6 +517,109 @@ export const getCategories = asyncHandler(
     res.status(200).json({
       success: true,
       data: categoriesWithCounts,
+    });
+  }
+);
+
+/**
+ * @desc    Create video category
+ * @route   POST /api/videos/categories
+ * @access  Private/Admin
+ */
+export const createVideoCategory = asyncHandler(
+  async (req: Request, res: Response) => {
+    const { name } = req.body;
+
+    if (!name) {
+      res.status(400);
+      throw new Error("Category name is required");
+    }
+
+    const category = await CategoryModel.create({
+      name,
+      type: "video",
+    });
+
+    res.status(201).json({
+      success: true,
+      message: "Video category created successfully",
+      data: category,
+    });
+  }
+);
+
+/**
+ * @desc    Update video category
+ * @route   PUT /api/videos/categories/:id
+ * @access  Private/Admin
+ */
+export const updateVideoCategory = asyncHandler(
+  async (req: Request, res: Response) => {
+    const { name } = req.body;
+
+    if (!name) {
+      res.status(400);
+      throw new Error("Category name is required");
+    }
+
+    // Ensure we're only updating video categories
+    const category = await CategoryModel.findOne({
+      _id: req.params.id,
+      type: "video",
+    });
+
+    if (!category) {
+      res.status(404);
+      throw new Error("Video category not found");
+    }
+
+    const updatedCategory = await CategoryModel.findByIdAndUpdate(
+      req.params.id,
+      { name },
+      { new: true, runValidators: true }
+    );
+
+    res.status(200).json({
+      success: true,
+      message: "Video category updated successfully",
+      data: updatedCategory,
+    });
+  }
+);
+
+/**
+ * @desc    Delete video category
+ * @route   DELETE /api/videos/categories/:id
+ * @access  Private/Admin
+ */
+export const deleteVideoCategory = asyncHandler(
+  async (req: Request, res: Response) => {
+    // Ensure we're only deleting video categories
+    const category = await CategoryModel.findOne({
+      _id: req.params.id,
+      type: "video",
+    });
+
+    if (!category) {
+      res.status(404);
+      throw new Error("Video category not found");
+    }
+
+    // Check if category is being used by any videos
+    const isUsed = await VideoModel.findOne({ category: req.params.id });
+
+    if (isUsed) {
+      res.status(400);
+      throw new Error(
+        "Cannot delete category that is currently in use by videos"
+      );
+    }
+
+    await CategoryModel.findByIdAndDelete(req.params.id);
+
+    res.status(200).json({
+      success: true,
+      message: "Video category deleted successfully",
     });
   }
 );
