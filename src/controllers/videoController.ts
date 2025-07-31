@@ -379,6 +379,13 @@ export const createVideo = asyncHandler(async (req: Request, res: Response) => {
  * @access  Private/Admin
  */
 export const updateVideo = asyncHandler(async (req: Request, res: Response) => {
+  console.log("Update video request:", {
+    id: req.params.id,
+    body: req.body,
+    files: req.files,
+    contentType: req.headers["content-type"],
+  });
+
   const video = await VideoModel.findById(req.params.id);
 
   if (!video) {
@@ -386,17 +393,144 @@ export const updateVideo = asyncHandler(async (req: Request, res: Response) => {
     throw new Error("Video not found");
   }
 
-  // Validate category if provided
+  // Handle both multipart/form-data and JSON data
+  const isMultipart = req.headers["content-type"]?.includes(
+    "multipart/form-data"
+  );
+
+  // For JSON requests, check if body exists
+  if (!isMultipart && (!req.body || Object.keys(req.body).length === 0)) {
+    res.status(400);
+    throw new Error("Request body is empty or invalid");
+  }
+
+  // Handle file uploads if present (multipart requests)
+  let videoUploadResult: any = null;
+  let thumbnailUploadResult: any = null;
+
+  if (isMultipart && req.files) {
+    const files = req.files as { [fieldname: string]: Express.Multer.File[] };
+
+    // Handle video file upload
+    if (files.video && files.video[0]) {
+      const videoFile = files.video[0];
+      console.log("Uploading new video file:", videoFile.originalname);
+
+      // Delete old video from Cloudinary if it exists
+      if (video.publicId) {
+        await cloudinary.uploader.destroy(video.publicId, {
+          resource_type: "video",
+        });
+      }
+
+      // Upload new video to Cloudinary
+      videoUploadResult = await new Promise((resolve, reject) => {
+        const uploadStream = cloudinary.uploader.upload_stream(
+          {
+            resource_type: "video",
+            folder: "dynamic-images-for-politician-videos",
+            quality: "auto",
+            format: "mp4",
+          },
+          (error, result) => {
+            if (error) {
+              console.error("Cloudinary video upload error:", error);
+              reject(error);
+            } else {
+              resolve(result);
+            }
+          }
+        );
+        uploadStream.end(videoFile.buffer);
+      });
+
+      // Update request body with new video data
+      req.body.videoUrl = videoUploadResult.secure_url;
+      req.body.publicId = videoUploadResult.public_id;
+    }
+
+    // Handle thumbnail file upload
+    if (files.thumbnail && files.thumbnail[0]) {
+      const thumbnailFile = files.thumbnail[0];
+      console.log("Uploading new thumbnail file:", thumbnailFile.originalname);
+
+      // Delete old thumbnail from Cloudinary if it exists
+      if (video.thumbnailPublicId) {
+        await cloudinary.uploader.destroy(video.thumbnailPublicId, {
+          resource_type: "image",
+        });
+      }
+
+      // Upload new thumbnail to Cloudinary
+      thumbnailUploadResult = await new Promise((resolve, reject) => {
+        const uploadStream = cloudinary.uploader.upload_stream(
+          {
+            resource_type: "image",
+            folder: "politician-video-thumbnails",
+            quality: "auto",
+            format: "jpg",
+            transformation: [{ width: 1280, height: 720, crop: "fill" }],
+          },
+          (error, result) => {
+            if (error) {
+              console.error("Cloudinary thumbnail upload error:", error);
+              reject(error);
+            } else {
+              resolve(result);
+            }
+          }
+        );
+        uploadStream.end(thumbnailFile.buffer);
+      });
+
+      // Update request body with new thumbnail data
+      req.body.thumbnail = thumbnailUploadResult.secure_url;
+      req.body.thumbnailPublicId = thumbnailUploadResult.public_id;
+    }
+  }
+
+  // Validate category if provided (using uploadVideo logic)
   if (req.body.category) {
-    const categoryDoc = await CategoryModel.findOne({
-      _id: req.body.category,
-      type: "video",
-    });
+    const { category } = req.body;
+
+    // Try to find by ObjectId first, if that fails, try by name
+    let categoryDoc;
+    let categoryId = category; // Use a separate variable for the actual ID
+
+    try {
+      // First attempt: find by ObjectId
+      categoryDoc = await CategoryModel.findOne({
+        _id: category,
+        type: "video",
+      });
+    } catch (error) {
+      // If ObjectId cast fails, category might be a name instead of ID
+      console.log("ObjectId cast failed, trying to find by name:", category);
+    }
+
+    // If not found by ID, try to find by name
+    if (!categoryDoc) {
+      categoryDoc = await CategoryModel.findOne({
+        name: category,
+        type: "video",
+      });
+
+      if (categoryDoc) {
+        console.log("Found category by name, using ID:", categoryDoc._id);
+        // Use the correct ObjectId for database insertion
+        categoryId = categoryDoc._id.toString();
+      }
+    }
 
     if (!categoryDoc) {
       res.status(400);
-      throw new Error("Invalid video category");
+      throw new Error(
+        `Invalid video category: ${category}. Please ensure the category exists and is of type 'video'.`
+      );
     }
+
+    // Update the category in request body with the resolved ID
+    req.body.category = categoryId;
   }
 
   // Process tags if provided
@@ -412,23 +546,77 @@ export const updateVideo = asyncHandler(async (req: Request, res: Response) => {
     req.body.date = new Date(req.body.date);
   }
 
-  // Update video
-  const updatedVideo = await VideoModel.findByIdAndUpdate(
-    req.params.id,
-    req.body,
-    {
-      new: true,
-      runValidators: true,
+  // Convert featured string to boolean if provided (from form data)
+  if (req.body.featured !== undefined) {
+    req.body.featured =
+      req.body.featured === "true" || req.body.featured === true;
+  }
+
+  // Update video with error handling
+  try {
+    const updatedVideo = await VideoModel.findByIdAndUpdate(
+      req.params.id,
+      req.body,
+      {
+        new: true,
+        runValidators: true,
+      }
+    ).populate("category", "name type");
+
+    // Check if update was successful
+    if (!updatedVideo) {
+      res.status(404);
+      throw new Error("Video not found or update failed");
     }
-  ).populate("category", "name type");
 
-  res.status(200).json({
-    success: true,
-    message: "Video updated successfully",
-    data: { video: updatedVideo },
-  });
+    console.log("Video updated successfully:", updatedVideo._id);
+
+    res.status(200).json({
+      success: true,
+      message: "Video updated successfully",
+      data: { video: updatedVideo },
+    });
+  } catch (updateError: unknown) {
+    console.error("Update video error:", updateError);
+
+    // Cleanup uploaded files if database update fails
+    if (videoUploadResult) {
+      await cloudinary.uploader.destroy(videoUploadResult.public_id, {
+        resource_type: "video",
+      });
+    }
+    if (thumbnailUploadResult) {
+      await cloudinary.uploader.destroy(thumbnailUploadResult.public_id, {
+        resource_type: "image",
+      });
+    }
+
+    // Type guard for Error objects
+    if (updateError instanceof Error) {
+      // Handle specific MongoDB validation errors
+      if (updateError.name === "ValidationError") {
+        const validationErrors = Object.values((updateError as any).errors).map(
+          (err: any) => err.message
+        );
+        res.status(400);
+        throw new Error(`Validation error: ${validationErrors.join(", ")}`);
+      }
+
+      // Handle cast errors (invalid ObjectId)
+      if (updateError.name === "CastError") {
+        res.status(400);
+        throw new Error("Invalid video ID format");
+      }
+
+      // Re-throw other errors
+      throw updateError;
+    }
+
+    // Handle non-Error objects
+    res.status(500);
+    throw new Error("An unexpected error occurred during video update");
+  }
 });
-
 /**
  * @desc    Delete video
  * @route   DELETE /api/videos/:id

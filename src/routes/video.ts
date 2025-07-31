@@ -41,7 +41,16 @@ router.post(
   uploadVideo
 );
 router.post("/", createVideo);
-router.put("/:id", updateVideo);
+
+router.put(
+  "/:id",
+  videoUploadConfig.fields([
+    { name: "video", maxCount: 1 },
+    { name: "thumbnail", maxCount: 1 },
+  ]),
+  handleMulterError,
+  updateVideo
+);
 router.delete("/:id", deleteVideo);
 
 // Category management (protected)
