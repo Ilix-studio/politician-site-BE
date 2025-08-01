@@ -82,7 +82,6 @@ const pressSchema: Schema<IPress> = new Schema(
     },
     link: {
       type: String,
-      required: [true, "Article link is required"],
       validate: {
         validator: function (v: string) {
           return /^https?:\/\/.+/.test(v);

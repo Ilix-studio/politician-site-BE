@@ -2,8 +2,60 @@
 import { Request, Response } from "express";
 import asyncHandler from "express-async-handler";
 import PressModel from "../models/pressModel";
+import CategoryModel from "../models/categoryModel";
 import cloudinary from "../config/cloudinaryConfig";
 import logger from "../utils/logger";
+import { Types } from "mongoose";
+
+/**
+ * Helper function to validate and resolve category
+ */
+const validateAndResolveCategory = async (category: string) => {
+  // Debug logging
+  console.log("Received category value:", category, typeof category);
+
+  // Validate category exists and is type "press"
+  if (!category || typeof category !== "string") {
+    throw new Error("Category is required and must be a string");
+  }
+
+  // Try to find by ObjectId first, if that fails, try by name
+  let categoryDoc;
+  let categoryId = category; // Use a separate variable for the actual ID
+
+  try {
+    // First attempt: find by ObjectId
+    categoryDoc = await CategoryModel.findOne({
+      _id: category,
+      type: "press",
+    });
+  } catch (error) {
+    // If ObjectId cast fails, category might be a name instead of ID
+    console.log("ObjectId cast failed, trying to find by name:", category);
+  }
+
+  // If not found by ID, try to find by name
+  if (!categoryDoc) {
+    categoryDoc = await CategoryModel.findOne({
+      name: category,
+      type: "press",
+    });
+
+    if (categoryDoc) {
+      console.log("Found category by name, using ID:", categoryDoc._id);
+      // Update the categoryId variable to use the correct ObjectId
+      categoryId = categoryDoc._id.toString();
+    }
+  }
+
+  if (!categoryDoc) {
+    throw new Error(
+      `Invalid press category: ${category}. Please ensure the category exists and is of type 'press'.`
+    );
+  }
+
+  return { categoryDoc, categoryId };
+};
 
 /**
  * @desc    Upload press article with multiple images
@@ -22,7 +74,6 @@ export const uploadMultiplePress = asyncHandler(
       title,
       source,
       date,
-      link,
       category,
       author,
       readTime,
@@ -31,10 +82,17 @@ export const uploadMultiplePress = asyncHandler(
       altTexts,
     } = req.body;
 
+    // Validate and resolve category
+    const { categoryId } = await validateAndResolveCategory(category);
+
     // Parse altTexts
     let altTextsArray: string[] = [];
     if (typeof altTexts === "string") {
-      altTextsArray = JSON.parse(altTexts);
+      try {
+        altTextsArray = JSON.parse(altTexts);
+      } catch (error) {
+        altTextsArray = [altTexts];
+      }
     } else if (Array.isArray(altTexts)) {
       altTextsArray = altTexts;
     }
@@ -74,10 +132,9 @@ export const uploadMultiplePress = asyncHandler(
     const press = await PressModel.create({
       title,
       source,
-      date: new Date(date),
+      date: date ? new Date(date) : new Date(),
       images: uploadedImages,
-      link,
-      category,
+      category: categoryId, // Use the resolved category ID
       author,
       readTime,
       content,
@@ -118,13 +175,16 @@ export const uploadPress = asyncHandler(async (req: Request, res: Response) => {
     title,
     source,
     date,
-    link,
     category,
     author,
     readTime,
     content,
     excerpt,
+    alt,
   } = req.body;
+
+  // Validate and resolve category
+  const { categoryId } = await validateAndResolveCategory(category);
 
   // Upload image to Cloudinary
   const imageUploadResult = await new Promise((resolve, reject) => {
@@ -153,16 +213,15 @@ export const uploadPress = asyncHandler(async (req: Request, res: Response) => {
   const press = await PressModel.create({
     title,
     source,
-    date: new Date(date),
+    date: date ? new Date(date) : new Date(),
     images: [
       {
         src: imageResult.secure_url,
-        alt: title,
+        alt: alt || title,
         cloudinaryPublicId: imageResult.public_id,
       },
     ],
-    link,
-    category,
+    category: categoryId, // Use the resolved category ID
     author,
     readTime,
     content,
@@ -181,62 +240,67 @@ export const uploadPress = asyncHandler(async (req: Request, res: Response) => {
 });
 
 /**
- * @desc    Get all press articles
+ * @desc    Get all press articles with pagination and filtering
  * @route   GET /api/press
  * @access  Public
  */
 export const getPress = asyncHandler(async (req: Request, res: Response) => {
   const {
-    page = "1",
-    limit = "10",
-    category = "all",
-    search = "",
+    page = 1,
+    limit = 10,
+    category,
+    search,
     sortBy = "date",
     sortOrder = "desc",
-    isActive = "true",
   } = req.query;
 
-  const pageNumber = parseInt(page as string);
-  const limitNumber = parseInt(limit as string);
-  const skip = (pageNumber - 1) * limitNumber;
+  const pageNum = parseInt(page as string, 10);
+  const limitNum = parseInt(limit as string, 10);
+  const skip = (pageNum - 1) * limitNum;
 
-  let filter: any = {};
+  // Build filter object
+  const filter: any = { isActive: true };
 
-  if (isActive !== "all") {
-    filter.isActive = isActive === "true";
-  }
-
-  if (category !== "all") {
+  if (category && category !== "all") {
     filter.category = category;
   }
 
   if (search) {
-    filter.$text = { $search: search as string };
+    filter.$or = [
+      { title: { $regex: search, $options: "i" } },
+      { content: { $regex: search, $options: "i" } },
+      { excerpt: { $regex: search, $options: "i" } },
+      { author: { $regex: search, $options: "i" } },
+      { source: { $regex: search, $options: "i" } },
+    ];
   }
 
+  // Build sort object
   const sort: any = {};
   sort[sortBy as string] = sortOrder === "asc" ? 1 : -1;
 
-  const press = await PressModel.find(filter)
-    .populate("category", "name type")
-    .sort(sort)
-    .skip(skip)
-    .limit(limitNumber)
-    .lean();
+  const [press, total] = await Promise.all([
+    PressModel.find(filter)
+      .populate("category", "name type")
+      .sort(sort)
+      .skip(skip)
+      .limit(limitNum)
+      .lean(),
+    PressModel.countDocuments(filter),
+  ]);
 
-  const totalPress = await PressModel.countDocuments(filter);
+  const totalPages = Math.ceil(total / limitNum);
 
   res.status(200).json({
     success: true,
     data: {
       press,
       pagination: {
-        currentPage: pageNumber,
-        totalPages: Math.ceil(totalPress / limitNumber),
-        totalPress,
-        hasNextPage: pageNumber < Math.ceil(totalPress / limitNumber),
-        hasPrevPage: pageNumber > 1,
-        limit: limitNumber,
+        current: pageNum,
+        pages: totalPages,
+        total,
+        hasNext: pageNum < totalPages,
+        hasPrev: pageNum > 1,
       },
     },
   });
@@ -249,21 +313,19 @@ export const getPress = asyncHandler(async (req: Request, res: Response) => {
  */
 export const getPressById = asyncHandler(
   async (req: Request, res: Response) => {
-    const { id } = req.params;
-
-    const press = await PressModel.findById(id).populate(
+    const press = await PressModel.findById(req.params.id).populate(
       "category",
       "name type"
     );
 
-    if (!press) {
+    if (!press || !press.isActive) {
       res.status(404);
       throw new Error("Press article not found");
     }
 
     res.status(200).json({
       success: true,
-      data: { press },
+      data: press,
     });
   }
 );
@@ -279,7 +341,6 @@ export const createPress = asyncHandler(async (req: Request, res: Response) => {
     source,
     date,
     images,
-    link,
     category,
     author,
     readTime,
@@ -292,13 +353,15 @@ export const createPress = asyncHandler(async (req: Request, res: Response) => {
     throw new Error("At least one image is required");
   }
 
+  // Validate and resolve category
+  const { categoryId } = await validateAndResolveCategory(category);
+
   const press = await PressModel.create({
     title,
     source,
-    date: new Date(date),
+    date: date ? new Date(date) : new Date(),
     images,
-    link,
-    category,
+    category: categoryId, // Use the resolved category ID
     author,
     readTime,
     content,
@@ -312,7 +375,7 @@ export const createPress = asyncHandler(async (req: Request, res: Response) => {
   res.status(201).json({
     success: true,
     message: "Press article created successfully",
-    data: { press },
+    data: press,
   });
 });
 
@@ -322,31 +385,57 @@ export const createPress = asyncHandler(async (req: Request, res: Response) => {
  * @access  Private/Admin
  */
 export const updatePress = asyncHandler(async (req: Request, res: Response) => {
-  const { id } = req.params;
-  const updateData = req.body;
-
-  const press = await PressModel.findById(id);
+  const press = await PressModel.findById(req.params.id);
 
   if (!press) {
     res.status(404);
     throw new Error("Press article not found");
   }
 
-  if (updateData.date) {
-    updateData.date = new Date(updateData.date);
+  if (!req.body) {
+    res.status(400);
+    throw new Error("Request body is required");
   }
 
-  const updatedPress = await PressModel.findByIdAndUpdate(id, updateData, {
-    new: true,
-    runValidators: true,
-  }).populate("category", "name type");
+  const {
+    title,
+    source,
+    date,
+    images,
+    category,
+    author,
+    readTime,
+    content,
+    excerpt,
+    isActive,
+  } = req.body;
 
-  logger.info(`Press article updated: ${updatedPress?.title}`);
+  // Validate and resolve category if it's being updated
+  if (category !== undefined) {
+    const { categoryDoc } = await validateAndResolveCategory(category);
+    press.category = new Types.ObjectId(categoryDoc._id);
+  }
+
+  // Update other fields
+  if (title !== undefined) press.title = title;
+  if (source !== undefined) press.source = source;
+  if (date !== undefined) press.date = new Date(date);
+  if (images !== undefined) press.images = images;
+  if (author !== undefined) press.author = author;
+  if (readTime !== undefined) press.readTime = readTime;
+  if (content !== undefined) press.content = content;
+  if (excerpt !== undefined) press.excerpt = excerpt;
+  if (isActive !== undefined) press.isActive = isActive;
+
+  const updatedPress = await press.save();
+  await updatedPress.populate("category", "name type");
+
+  logger.info(`Press article updated: ${updatedPress.title}`);
 
   res.status(200).json({
     success: true,
     message: "Press article updated successfully",
-    data: { press: updatedPress },
+    data: updatedPress,
   });
 });
 
@@ -356,9 +445,7 @@ export const updatePress = asyncHandler(async (req: Request, res: Response) => {
  * @access  Private/Admin
  */
 export const deletePress = asyncHandler(async (req: Request, res: Response) => {
-  const { id } = req.params;
-
-  const press = await PressModel.findById(id);
+  const press = await PressModel.findById(req.params.id);
 
   if (!press) {
     res.status(404);
@@ -373,12 +460,103 @@ export const deletePress = asyncHandler(async (req: Request, res: Response) => {
   await Promise.allSettled(deletePromises);
 
   // Delete press article from database
-  await PressModel.findByIdAndDelete(id);
+  await PressModel.findByIdAndDelete(req.params.id);
 
   logger.info(`Press article deleted: ${press.title}`);
 
   res.status(200).json({
     success: true,
     message: "Press article deleted successfully",
+  });
+});
+
+/**
+ * @desc    Get press articles by category (Public)
+ * @route   GET /api/press/category/:category
+ * @access  Public
+ */
+export const getPressByCategory = asyncHandler(
+  async (req: Request, res: Response) => {
+    const { category } = req.params;
+    const { limit = 10 } = req.query;
+
+    const limitNum = parseInt(limit as string, 10);
+
+    const press = await PressModel.find({
+      category,
+      isActive: true,
+    })
+      .populate("category", "name type")
+      .sort({ date: -1 })
+      .limit(limitNum)
+      .lean();
+
+    const total = await PressModel.countDocuments({
+      category,
+      isActive: true,
+    });
+
+    res.status(200).json({
+      success: true,
+      data: {
+        press,
+        pagination: {
+          current: 1,
+          pages: Math.ceil(total / limitNum),
+          total,
+          hasNext: total > limitNum,
+          hasPrev: false,
+        },
+      },
+    });
+  }
+);
+
+/**
+ * @desc    Search press articles (Public)
+ * @route   GET /api/press/search
+ * @access  Public
+ */
+export const searchPress = asyncHandler(async (req: Request, res: Response) => {
+  const { search, limit = 10 } = req.query;
+
+  if (!search) {
+    res.status(400);
+    throw new Error("Search query is required");
+  }
+
+  const limitNum = parseInt(limit as string, 10);
+
+  const filter = {
+    isActive: true,
+    $or: [
+      { title: { $regex: search, $options: "i" } },
+      { content: { $regex: search, $options: "i" } },
+      { excerpt: { $regex: search, $options: "i" } },
+      { author: { $regex: search, $options: "i" } },
+      { source: { $regex: search, $options: "i" } },
+    ],
+  };
+
+  const press = await PressModel.find(filter)
+    .populate("category", "name type")
+    .sort({ date: -1 })
+    .limit(limitNum)
+    .lean();
+
+  const total = await PressModel.countDocuments(filter);
+
+  res.status(200).json({
+    success: true,
+    data: {
+      press,
+      pagination: {
+        current: 1,
+        pages: Math.ceil(total / limitNum),
+        total,
+        hasNext: total > limitNum,
+        hasPrev: false,
+      },
+    },
   });
 });

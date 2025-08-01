@@ -8,6 +8,8 @@ import {
   createPress,
   updatePress,
   deletePress,
+  getPressByCategory,
+  searchPress,
 } from "../controllers/pressController";
 import { protect } from "../middleware/authMiddleware";
 import { apiLimiter } from "../middleware/rateLimitMiddleware";
@@ -17,10 +19,15 @@ const router = express.Router();
 
 // Public routes
 router.get("/", apiLimiter, getPress);
+router.get("/search", apiLimiter, searchPress);
+router.get("/category/:category", apiLimiter, getPressByCategory);
 router.get("/:id", apiLimiter, getPressById);
 
 // Protected routes (Admin only)
 router.use(protect); // All routes below require authentication
+
+// Press article management
+router.post("/", createPress);
 
 // Single image upload (backward compatibility)
 router.post(
@@ -38,7 +45,6 @@ router.post(
   uploadMultiplePress
 );
 
-router.post("/", createPress);
 router.put("/:id", updatePress);
 router.delete("/:id", deletePress);
 
