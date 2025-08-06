@@ -78,7 +78,7 @@ export const uploadMultiplePress = asyncHandler(
       author,
       readTime,
       content,
-      excerpt,
+
       altTexts,
     } = req.body;
 
@@ -138,7 +138,6 @@ export const uploadMultiplePress = asyncHandler(
       author,
       readTime,
       content,
-      excerpt,
     });
 
     await press.populate("category", "name type");
@@ -179,7 +178,7 @@ export const uploadPress = asyncHandler(async (req: Request, res: Response) => {
     author,
     readTime,
     content,
-    excerpt,
+
     alt,
   } = req.body;
 
@@ -225,7 +224,6 @@ export const uploadPress = asyncHandler(async (req: Request, res: Response) => {
     author,
     readTime,
     content,
-    excerpt,
   });
 
   await press.populate("category", "name type");
@@ -269,7 +267,6 @@ export const getPress = asyncHandler(async (req: Request, res: Response) => {
     filter.$or = [
       { title: { $regex: search, $options: "i" } },
       { content: { $regex: search, $options: "i" } },
-      { excerpt: { $regex: search, $options: "i" } },
       { author: { $regex: search, $options: "i" } },
       { source: { $regex: search, $options: "i" } },
     ];
@@ -336,17 +333,8 @@ export const getPressById = asyncHandler(
  * @access  Private/Admin
  */
 export const createPress = asyncHandler(async (req: Request, res: Response) => {
-  const {
-    title,
-    source,
-    date,
-    images,
-    category,
-    author,
-    readTime,
-    content,
-    excerpt,
-  } = req.body;
+  const { title, source, date, images, category, author, readTime, content } =
+    req.body;
 
   if (!images || !Array.isArray(images) || images.length === 0) {
     res.status(400);
@@ -365,7 +353,6 @@ export const createPress = asyncHandler(async (req: Request, res: Response) => {
     author,
     readTime,
     content,
-    excerpt,
   });
 
   await press.populate("category", "name type");
@@ -406,7 +393,7 @@ export const updatePress = asyncHandler(async (req: Request, res: Response) => {
     author,
     readTime,
     content,
-    excerpt,
+
     isActive,
   } = req.body;
 
@@ -424,7 +411,7 @@ export const updatePress = asyncHandler(async (req: Request, res: Response) => {
   if (author !== undefined) press.author = author;
   if (readTime !== undefined) press.readTime = readTime;
   if (content !== undefined) press.content = content;
-  if (excerpt !== undefined) press.excerpt = excerpt;
+
   if (isActive !== undefined) press.isActive = isActive;
 
   const updatedPress = await press.save();
@@ -532,7 +519,6 @@ export const searchPress = asyncHandler(async (req: Request, res: Response) => {
     $or: [
       { title: { $regex: search, $options: "i" } },
       { content: { $regex: search, $options: "i" } },
-      { excerpt: { $regex: search, $options: "i" } },
       { author: { $regex: search, $options: "i" } },
       { source: { $regex: search, $options: "i" } },
     ],

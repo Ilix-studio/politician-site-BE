@@ -19,7 +19,6 @@ export interface IPress extends Document {
   author: string;
   readTime: string;
   content: string;
-  excerpt: string;
   isActive: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -125,12 +124,6 @@ const pressSchema: Schema<IPress> = new Schema(
       trim: true,
       maxlength: [10000, "Content cannot exceed 10000 characters"],
     },
-    excerpt: {
-      type: String,
-      required: [true, "Excerpt is required"],
-      trim: true,
-      maxlength: [500, "Excerpt cannot exceed 500 characters"],
-    },
     isActive: {
       type: Boolean,
       default: true,
@@ -142,7 +135,7 @@ const pressSchema: Schema<IPress> = new Schema(
 );
 
 // Index for search functionality
-pressSchema.index({ title: "text", content: "text", excerpt: "text" });
+pressSchema.index({ title: "text", content: "text" });
 pressSchema.index({ category: 1 });
 pressSchema.index({ date: -1 });
 pressSchema.index({ isActive: 1 });
