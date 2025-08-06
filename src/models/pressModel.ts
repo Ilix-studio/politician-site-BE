@@ -16,7 +16,6 @@ export interface IPress extends Document {
   images: IPressImage[];
   link: string;
   category: mongoose.Types.ObjectId;
-  author: string;
   readTime: string;
   content: string;
   isActive: boolean;
@@ -104,11 +103,7 @@ const pressSchema: Schema<IPress> = new Schema(
         message: "Invalid press category",
       },
     },
-    author: {
-      type: String,
-      trim: true,
-      maxlength: [100, "Author name cannot exceed 100 characters"],
-    },
+
     readTime: {
       type: String,
       required: [true, "Read time is required"],

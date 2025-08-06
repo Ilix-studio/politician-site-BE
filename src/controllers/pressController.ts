@@ -70,17 +70,8 @@ export const uploadMultiplePress = asyncHandler(
     }
 
     const files = req.files as Express.Multer.File[];
-    const {
-      title,
-      source,
-      date,
-      category,
-      author,
-      readTime,
-      content,
-
-      altTexts,
-    } = req.body;
+    const { title, source, date, category, readTime, content, altTexts } =
+      req.body;
 
     // Validate and resolve category
     const { categoryId } = await validateAndResolveCategory(category);
@@ -135,7 +126,6 @@ export const uploadMultiplePress = asyncHandler(
       date: date ? new Date(date) : new Date(),
       images: uploadedImages,
       category: categoryId, // Use the resolved category ID
-      author,
       readTime,
       content,
     });
@@ -170,17 +160,7 @@ export const uploadPress = asyncHandler(async (req: Request, res: Response) => {
     throw new Error("Image file is required");
   }
 
-  const {
-    title,
-    source,
-    date,
-    category,
-    author,
-    readTime,
-    content,
-
-    alt,
-  } = req.body;
+  const { title, source, date, category, readTime, content, alt } = req.body;
 
   // Validate and resolve category
   const { categoryId } = await validateAndResolveCategory(category);
@@ -221,7 +201,6 @@ export const uploadPress = asyncHandler(async (req: Request, res: Response) => {
       },
     ],
     category: categoryId, // Use the resolved category ID
-    author,
     readTime,
     content,
   });
@@ -278,7 +257,6 @@ export const getPress = asyncHandler(async (req: Request, res: Response) => {
     filter.$or = [
       { title: { $regex: search, $options: "i" } },
       { content: { $regex: search, $options: "i" } },
-      { author: { $regex: search, $options: "i" } },
       { source: { $regex: search, $options: "i" } },
     ];
   }
@@ -344,8 +322,7 @@ export const getPressById = asyncHandler(
  * @access  Private/Admin
  */
 export const createPress = asyncHandler(async (req: Request, res: Response) => {
-  const { title, source, date, images, category, author, readTime, content } =
-    req.body;
+  const { title, source, date, images, category, readTime, content } = req.body;
 
   if (!images || !Array.isArray(images) || images.length === 0) {
     res.status(400);
@@ -361,7 +338,6 @@ export const createPress = asyncHandler(async (req: Request, res: Response) => {
     date: date ? new Date(date) : new Date(),
     images,
     category: categoryId, // Use the resolved category ID
-    author,
     readTime,
     content,
   });
@@ -395,18 +371,8 @@ export const updatePress = asyncHandler(async (req: Request, res: Response) => {
     throw new Error("Request body is required");
   }
 
-  const {
-    title,
-    source,
-    date,
-    images,
-    category,
-    author,
-    readTime,
-    content,
-
-    isActive,
-  } = req.body;
+  const { title, source, date, images, category, readTime, content, isActive } =
+    req.body;
 
   // Validate and resolve category if it's being updated
   if (category !== undefined) {
@@ -419,7 +385,6 @@ export const updatePress = asyncHandler(async (req: Request, res: Response) => {
   if (source !== undefined) press.source = source;
   if (date !== undefined) press.date = new Date(date);
   if (images !== undefined) press.images = images;
-  if (author !== undefined) press.author = author;
   if (readTime !== undefined) press.readTime = readTime;
   if (content !== undefined) press.content = content;
 
@@ -530,7 +495,6 @@ export const searchPress = asyncHandler(async (req: Request, res: Response) => {
     $or: [
       { title: { $regex: search, $options: "i" } },
       { content: { $regex: search, $options: "i" } },
-      { author: { $regex: search, $options: "i" } },
       { source: { $regex: search, $options: "i" } },
     ],
   };
