@@ -106,7 +106,6 @@ const pressSchema: Schema<IPress> = new Schema(
     },
     author: {
       type: String,
-      required: [true, "Author is required"],
       trim: true,
       maxlength: [100, "Author name cannot exceed 100 characters"],
     },
