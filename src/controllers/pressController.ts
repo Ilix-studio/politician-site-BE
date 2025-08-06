@@ -260,7 +260,18 @@ export const getPress = asyncHandler(async (req: Request, res: Response) => {
   const filter: any = { isActive: true };
 
   if (category && category !== "all") {
-    filter.category = category;
+    // Try to resolve category name to ObjectId
+    const categoryDoc = await CategoryModel.findOne({
+      name: category,
+      type: "press",
+    });
+
+    if (!categoryDoc) {
+      res.status(400);
+      throw new Error(`Invalid category: ${category}`);
+    }
+
+    filter.category = categoryDoc._id;
   }
 
   if (search) {

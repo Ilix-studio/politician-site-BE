@@ -35,7 +35,6 @@ export const getVideos = asyncHandler(async (req: Request, res: Response) => {
     page = "1",
     limit = "12",
     category,
-    featured,
     search,
     sortBy = "date",
     sortOrder = "desc",
@@ -46,12 +45,18 @@ export const getVideos = asyncHandler(async (req: Request, res: Response) => {
 
   // Filter by category
   if (category && category !== "all") {
-    query.category = category;
-  }
+    // Try to resolve category name to ObjectId
+    const categoryDoc = await CategoryModel.findOne({
+      name: category,
+      type: "photo",
+    });
 
-  // Filter by featured status
-  if (featured === "true") {
-    query.featured = true;
+    if (!categoryDoc) {
+      res.status(400);
+      throw new Error(`Invalid category: ${category}`);
+    }
+
+    query.category = categoryDoc._id;
   }
 
   // Search functionality
