@@ -48,7 +48,7 @@ export const getVideos = asyncHandler(async (req: Request, res: Response) => {
     // Try to resolve category name to ObjectId
     const categoryDoc = await CategoryModel.findOne({
       name: category,
-      type: "photo",
+      type: "video",
     });
 
     if (!categoryDoc) {
