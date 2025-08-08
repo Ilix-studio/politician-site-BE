@@ -1,127 +1,9 @@
-// src/controllers/photoController.ts
 import { Request, Response } from "express";
 import asyncHandler from "express-async-handler";
 import PhotoModel, { IPhoto } from "../models/photoModel";
+import CategoryModel from "../models/categoryModel";
 import cloudinary from "../config/cloudinaryConfig";
-import logger from "../utils/logger";
-
-/**
- * Create a new photo
- * @route POST /api/photos
- * @access Private (Admin only)
- */
-export const createPhoto = asyncHandler(async (req: Request, res: Response) => {
-  try {
-    const {
-      src,
-      alt,
-      title,
-      category,
-      date,
-      location,
-      description,
-      cloudinaryPublicId,
-    } = req.body;
-
-    // Validate required fields
-    if (!src || !alt || !title || !category || !cloudinaryPublicId) {
-      res.status(400);
-      throw new Error("Please provide all required fields");
-    }
-
-    const photo = await PhotoModel.create({
-      src,
-      alt,
-      title,
-      category,
-      date: date ? new Date(date) : new Date(),
-      location,
-      description,
-      cloudinaryPublicId,
-    });
-
-    res.status(201).json({
-      success: true,
-      message: "Photo created successfully",
-      data: photo,
-    });
-  } catch (error: any) {
-    logger.error(`Error creating photo: ${error.message}`);
-    res.status(400).json({
-      success: false,
-      message: error.message || "Error creating photo",
-    });
-  }
-});
-
-/**
- * Upload photo to Cloudinary and save to database
- * @route POST /api/photos/upload
- * @access Private (Admin only)
- */
-export const uploadPhoto = asyncHandler(async (req: Request, res: Response) => {
-  try {
-    if (!req.file) {
-      res.status(400);
-      throw new Error("No file uploaded");
-    }
-
-    const { alt, title, category, date, location, description } = req.body;
-
-    // Upload to Cloudinary
-    const cloudinaryResult = await new Promise((resolve, reject) => {
-      cloudinary.uploader
-        .upload_stream(
-          {
-            folder: "dynamic-images-for-politician",
-            resource_type: "image",
-            transformation: [
-              { width: 1200, height: 800, crop: "limit" },
-              { quality: "auto" },
-              { format: "auto" },
-            ],
-          },
-          (error, result) => {
-            if (error) reject(error);
-            else resolve(result);
-          }
-        )
-        .end(req.file!.buffer);
-    });
-
-    const uploadResult = cloudinaryResult as any;
-
-    // Create photo record in database
-    const photo = await PhotoModel.create({
-      src: uploadResult.secure_url,
-      alt: alt || title,
-      title,
-      category,
-      date: date ? new Date(date) : new Date(),
-      location,
-      description,
-      cloudinaryPublicId: uploadResult.public_id,
-    });
-
-    res.status(201).json({
-      success: true,
-      message: "Photo uploaded successfully",
-      data: {
-        photo,
-        cloudinary: {
-          publicId: uploadResult.public_id,
-          url: uploadResult.secure_url,
-        },
-      },
-    });
-  } catch (error: any) {
-    logger.error(`Error uploading photo: ${error.message}`);
-    res.status(500).json({
-      success: false,
-      message: error.message || "Error uploading photo",
-    });
-  }
-});
+import { Types } from "mongoose";
 
 /**
  * Get all photos with pagination and filtering
@@ -129,67 +11,75 @@ export const uploadPhoto = asyncHandler(async (req: Request, res: Response) => {
  * @access Public
  */
 export const getPhotos = asyncHandler(async (req: Request, res: Response) => {
-  try {
-    const {
-      page = 1,
-      limit = 12,
-      category,
-      search,
-      sortBy = "createdAt",
-      sortOrder = "desc",
-    } = req.query;
+  const {
+    page = 1,
+    limit = 12,
+    category,
+    search,
+    sortBy = "createdAt",
+    sortOrder = "desc",
+  } = req.query;
 
-    const pageNum = parseInt(page as string, 10);
-    const limitNum = parseInt(limit as string, 10);
-    const skip = (pageNum - 1) * limitNum;
+  const pageNum = parseInt(page as string, 10);
+  const limitNum = parseInt(limit as string, 10);
+  const skip = (pageNum - 1) * limitNum;
 
-    // Build filter object
-    const filter: any = { isActive: true };
+  // Build filter object
+  const filter: any = { isActive: true };
 
-    if (category && category !== "all") {
-      filter.category = category;
+  if (category && category !== "all") {
+    // Try to resolve category name to ObjectId
+    const categoryDoc = await CategoryModel.findOne({
+      name: category,
+      type: "photo",
+    });
+
+    if (!categoryDoc) {
+      res.status(400);
+      throw new Error(`Invalid category: ${category}`);
     }
 
-    if (search) {
-      filter.$or = [
-        { title: { $regex: search, $options: "i" } },
-        { description: { $regex: search, $options: "i" } },
-        { alt: { $regex: search, $options: "i" } },
-        { location: { $regex: search, $options: "i" } },
-      ];
-    }
-
-    // Build sort object
-    const sort: any = {};
-    sort[sortBy as string] = sortOrder === "asc" ? 1 : -1;
-
-    const [photos, total] = await Promise.all([
-      PhotoModel.find(filter).sort(sort).skip(skip).limit(limitNum).lean(),
-      PhotoModel.countDocuments(filter),
-    ]);
-
-    const totalPages = Math.ceil(total / limitNum);
-
-    res.status(200).json({
-      success: true,
-      data: {
-        photos,
-        pagination: {
-          current: pageNum,
-          pages: totalPages,
-          total,
-          hasNext: pageNum < totalPages,
-          hasPrev: pageNum > 1,
-        },
-      },
-    });
-  } catch (error: any) {
-    logger.error(`Error getting photos: ${error.message}`);
-    res.status(500).json({
-      success: false,
-      message: "Error fetching photos",
-    });
+    filter.category = categoryDoc._id;
   }
+
+  if (search) {
+    filter.$or = [
+      { title: { $regex: search, $options: "i" } },
+      { description: { $regex: search, $options: "i" } },
+      { location: { $regex: search, $options: "i" } },
+      { "images.alt": { $regex: search, $options: "i" } },
+    ];
+  }
+
+  // Build sort object
+  const sort: any = {};
+  sort[sortBy as string] = sortOrder === "asc" ? 1 : -1;
+
+  const [photos, total] = await Promise.all([
+    PhotoModel.find(filter)
+      .populate("category", "name type")
+      .sort(sort)
+      .skip(skip)
+      .limit(limitNum)
+      .lean(),
+    PhotoModel.countDocuments(filter),
+  ]);
+
+  const totalPages = Math.ceil(total / limitNum);
+
+  res.status(200).json({
+    success: true,
+    data: {
+      photos,
+      pagination: {
+        current: pageNum,
+        pages: totalPages,
+        total,
+        hasNext: pageNum < totalPages,
+        hasPrev: pageNum > 1,
+      },
+    },
+  });
 });
 
 /**
@@ -198,28 +88,331 @@ export const getPhotos = asyncHandler(async (req: Request, res: Response) => {
  * @access Public
  */
 export const getPhoto = asyncHandler(async (req: Request, res: Response) => {
-  try {
-    const photo = await PhotoModel.findById(req.params.id);
+  const photo = await PhotoModel.findById(req.params.id).populate(
+    "category",
+    "name type"
+  );
 
-    if (!photo || !photo.isActive) {
-      res.status(404);
-      throw new Error("Photo not found");
+  if (!photo || !photo.isActive) {
+    res.status(404);
+    throw new Error("Photo not found");
+  }
+
+  res.status(200).json({
+    success: true,
+    data: photo,
+  });
+});
+
+/**
+ * Create photo with existing image URLs
+ * @route POST /api/photos
+ * @access Private (Admin only)
+ */
+export const createPhoto = asyncHandler(async (req: Request, res: Response) => {
+  const { images, title, category, date, location, description } = req.body;
+
+  if (!images || !Array.isArray(images) || images.length === 0) {
+    res.status(400);
+    throw new Error("At least one image is required");
+  }
+
+  // Debug logging
+  console.log("Received category value:", category, typeof category);
+
+  // Validate category exists and is type "photo"
+  if (!category || typeof category !== "string") {
+    res.status(400);
+    throw new Error("Category is required and must be a string");
+  }
+
+  // Try to find by ObjectId first, if that fails, try by name
+  let categoryDoc;
+  let categoryId = category; // Use a separate variable for the actual ID
+
+  try {
+    // First attempt: find by ObjectId
+    categoryDoc = await CategoryModel.findOne({
+      _id: category,
+      type: "photo",
+    });
+  } catch (error) {
+    // If ObjectId cast fails, category might be a name instead of ID
+    console.log("ObjectId cast failed, trying to find by name:", category);
+  }
+
+  // If not found by ID, try to find by name
+  if (!categoryDoc) {
+    categoryDoc = await CategoryModel.findOne({
+      name: category,
+      type: "photo",
+    });
+
+    if (categoryDoc) {
+      console.log("Found category by name, using ID:", categoryDoc._id);
+      // Update the categoryId variable to use the correct ObjectId
+      categoryId = categoryDoc._id.toString();
+    }
+  }
+
+  if (!categoryDoc) {
+    res.status(400);
+    throw new Error(
+      `Invalid photo category: ${category}. Please ensure the category exists and is of type 'photo'.`
+    );
+  }
+
+  const photo = await PhotoModel.create({
+    images,
+    title,
+    category: categoryId, // Use the resolved category ID
+    date: date ? new Date(date) : new Date(),
+    location: location || undefined,
+    description: description || undefined,
+  });
+
+  await photo.populate("category", "name type");
+
+  res.status(201).json({
+    success: true,
+    message: "Photo created successfully",
+    data: photo,
+  });
+});
+
+/**
+ * Upload single photo
+ * @route POST /api/photos/upload
+ * @access Private (Admin only)
+ */
+export const uploadPhoto = asyncHandler(async (req: Request, res: Response) => {
+  if (!req.file) {
+    res.status(400);
+    throw new Error("No file uploaded");
+  }
+
+  const { alt, title, category, date, location, description } = req.body;
+
+  // Debug logging
+  console.log("Received category value:", category, typeof category);
+
+  // Validate category exists and is type "photo"
+  if (!category || typeof category !== "string") {
+    res.status(400);
+    throw new Error("Category is required and must be a string");
+  }
+
+  // Try to find by ObjectId first, if that fails, try by name
+  let categoryDoc;
+  let categoryId = category; // Use a separate variable for the actual ID
+
+  try {
+    // First attempt: find by ObjectId
+    categoryDoc = await CategoryModel.findOne({
+      _id: category,
+      type: "photo",
+    });
+  } catch (error) {
+    // If ObjectId cast fails, category might be a name instead of ID
+    console.log("ObjectId cast failed, trying to find by name:", category);
+  }
+
+  // If not found by ID, try to find by name
+  if (!categoryDoc) {
+    categoryDoc = await CategoryModel.findOne({
+      name: category,
+      type: "photo",
+    });
+
+    if (categoryDoc) {
+      console.log("Found category by name, using ID:", categoryDoc._id);
+      // Use the correct ObjectId for database insertion
+      categoryId = categoryDoc._id.toString();
+    }
+  }
+
+  if (!categoryDoc) {
+    res.status(400);
+    throw new Error(
+      `Invalid photo category: ${category}. Please ensure the category exists and is of type 'photo'.`
+    );
+  }
+
+  // Upload to Cloudinary
+  const cloudinaryResult = await new Promise((resolve, reject) => {
+    cloudinary.uploader
+      .upload_stream(
+        {
+          folder: "dynamic-images-for-politician",
+          resource_type: "image",
+          transformation: [
+            { width: 1200, height: 800, crop: "limit" },
+            { quality: "auto" },
+            { format: "auto" },
+          ],
+        },
+        (error, result) => {
+          if (error) reject(error);
+          else resolve(result);
+        }
+      )
+      .end(req.file!.buffer);
+  });
+
+  const uploadResult = cloudinaryResult as any;
+
+  // Create photo record with single image
+  const photo = await PhotoModel.create({
+    images: [
+      {
+        src: uploadResult.secure_url,
+        alt: alt || title,
+        cloudinaryPublicId: uploadResult.public_id,
+      },
+    ],
+    title,
+    category: categoryId, // Use the resolved category ID
+    date: date ? new Date(date) : new Date(),
+    location: location || undefined,
+    description: description || undefined,
+  });
+
+  await photo.populate("category", "name type");
+
+  res.status(201).json({
+    success: true,
+    message: "Photo uploaded successfully",
+    data: {
+      photo,
+      imagesCount: 1,
+    },
+  });
+});
+
+/**
+ * Upload multiple photos to Cloudinary and save to database
+ * @route POST /api/photos/upload-multiple
+ * @access Private (Admin only)
+ */
+export const uploadMultiplePhotos = asyncHandler(
+  async (req: Request, res: Response) => {
+    if (!req.files || !Array.isArray(req.files) || req.files.length === 0) {
+      res.status(400);
+      throw new Error("No files uploaded");
     }
 
-    await photo.save();
+    const files = req.files as Express.Multer.File[];
+    const { title, category, date, location, description, altTexts } = req.body;
 
-    res.status(200).json({
-      success: true,
-      data: photo,
+    // Debug logging
+    console.log("Received category value:", category, typeof category);
+
+    // Validate category exists and is type "photo"
+    if (!category || typeof category !== "string") {
+      res.status(400);
+      throw new Error("Category is required and must be a string");
+    }
+
+    // Try to find by ObjectId first, if that fails, try by name
+    let categoryDoc;
+    let categoryId = category; // Use a separate variable for the actual ID
+
+    try {
+      // First attempt: find by ObjectId
+      categoryDoc = await CategoryModel.findOne({
+        _id: category,
+        type: "photo",
+      });
+    } catch (error) {
+      // If ObjectId cast fails, category might be a name instead of ID
+      console.log("ObjectId cast failed, trying to find by name:", category);
+    }
+
+    // If not found by ID, try to find by name
+    if (!categoryDoc) {
+      categoryDoc = await CategoryModel.findOne({
+        name: category,
+        type: "photo",
+      });
+
+      if (categoryDoc) {
+        console.log("Found category by name, using ID:", categoryDoc._id);
+        // Update the categoryId variable to use the correct ObjectId
+        categoryId = categoryDoc._id.toString();
+      }
+    }
+
+    if (!categoryDoc) {
+      res.status(400);
+      throw new Error(
+        `Invalid photo category: ${category}. Please ensure the category exists and is of type 'photo'.`
+      );
+    }
+
+    // Parse altTexts if it's a string
+    let altTextsArray: string[] = [];
+    if (typeof altTexts === "string") {
+      try {
+        altTextsArray = JSON.parse(altTexts);
+      } catch (error) {
+        altTextsArray = [altTexts];
+      }
+    } else if (Array.isArray(altTexts)) {
+      altTextsArray = altTexts;
+    }
+
+    // Upload all files to Cloudinary
+    const uploadPromises = files.map((file, index) => {
+      return new Promise((resolve, reject) => {
+        cloudinary.uploader
+          .upload_stream(
+            {
+              folder: "dynamic-images-for-politician",
+              resource_type: "image",
+              transformation: [
+                { width: 1200, height: 800, crop: "limit" },
+                { quality: "auto" },
+                { format: "auto" },
+              ],
+            },
+            (error, result) => {
+              if (error) reject(error);
+              else
+                resolve({
+                  src: result!.secure_url,
+                  alt: altTextsArray[index] || title,
+                  cloudinaryPublicId: result!.public_id,
+                });
+            }
+          )
+          .end(file.buffer);
+      });
     });
-  } catch (error: any) {
-    logger.error(`Error getting photo: ${error.message}`);
-    res.status(404).json({
-      success: false,
-      message: "Photo not found",
+
+    const uploadedImages = await Promise.all(uploadPromises);
+
+    // Create photo record with multiple images
+    const photo = await PhotoModel.create({
+      images: uploadedImages,
+      title,
+      category: categoryId, // Use the resolved category ID
+      date: date ? new Date(date) : new Date(),
+      location: location || undefined,
+      description: description || undefined,
+    });
+
+    await photo.populate("category", "name type");
+
+    res.status(201).json({
+      success: true,
+      message: "Photos uploaded successfully",
+      data: {
+        photo,
+        imagesCount: uploadedImages.length,
+      },
     });
   }
-});
+);
 
 /**
  * Update photo
@@ -227,123 +420,204 @@ export const getPhoto = asyncHandler(async (req: Request, res: Response) => {
  * @access Private (Admin only)
  */
 export const updatePhoto = asyncHandler(async (req: Request, res: Response) => {
-  try {
-    const photo = await PhotoModel.findById(req.params.id);
+  const photo = await PhotoModel.findById(req.params.id);
 
-    if (!photo) {
-      res.status(404);
-      throw new Error("Photo not found");
+  if (!photo) {
+    res.status(404);
+    throw new Error("Photo not found");
+  }
+
+  if (!req.body) {
+    res.status(400);
+    throw new Error("Request body is required");
+  }
+
+  const { images, title, category, date, location, description, isActive } =
+    req.body;
+
+  // Validate and resolve category if it's being updated
+  if (category !== undefined) {
+    // Debug logging
+    console.log("Received category value:", category, typeof category);
+
+    if (!category || typeof category !== "string") {
+      res.status(400);
+      throw new Error("Category must be a string");
     }
 
-    const {
-      alt,
-      title,
-      category,
-      date,
-      location,
-      description,
+    // Try to find by ObjectId first, if that fails, try by name
+    let categoryDoc;
+    let categoryId = category;
 
-      isActive,
-    } = req.body;
+    try {
+      // First attempt: find by ObjectId
+      categoryDoc = await CategoryModel.findOne({
+        _id: category,
+        type: "photo",
+      });
+    } catch (error) {
+      // If ObjectId cast fails, category might be a name instead of ID
+      console.log("ObjectId cast failed, trying to find by name:", category);
+    }
 
-    // Update fields
-    if (alt !== undefined) photo.alt = alt;
-    if (title !== undefined) photo.title = title;
-    if (category !== undefined) photo.category = category;
-    if (date !== undefined) photo.date = new Date(date);
-    if (location !== undefined) photo.location = location;
-    if (description !== undefined) photo.description = description;
+    // If not found by ID, try to find by name
+    if (!categoryDoc) {
+      categoryDoc = await CategoryModel.findOne({
+        name: category,
+        type: "photo",
+      });
 
-    if (isActive !== undefined) photo.isActive = isActive;
+      if (categoryDoc) {
+        console.log("Found category by name, using ID:", categoryDoc._id);
+        categoryId = categoryDoc._id.toString();
+      }
+    }
 
-    const updatedPhoto = await photo.save();
+    if (!categoryDoc) {
+      res.status(400);
+      throw new Error(
+        `Invalid photo category: ${category}. Please ensure the category exists and is of type 'photo'.`
+      );
+    }
 
-    res.status(200).json({
-      success: true,
-      message: "Photo updated successfully",
-      data: updatedPhoto,
-    });
-  } catch (error: any) {
-    logger.error(`Error updating photo: ${error.message}`);
-    res.status(400).json({
-      success: false,
-      message: error.message || "Error updating photo",
-    });
+    // Update with resolved category ID
+    photo.category = new Types.ObjectId(categoryDoc._id);
   }
-});
 
+  // Update other fields
+  if (images !== undefined) photo.images = images;
+  if (title !== undefined) photo.title = title;
+  if (date !== undefined) photo.date = new Date(date);
+  if (location !== undefined) photo.location = location || undefined;
+  if (description !== undefined) photo.description = description || undefined;
+  if (isActive !== undefined) photo.isActive = isActive;
+
+  const updatedPhoto = await photo.save();
+  await updatedPhoto.populate("category", "name type");
+
+  res.status(200).json({
+    success: true,
+    message: "Photo updated successfully",
+    data: updatedPhoto,
+  });
+});
 /**
  * Delete photo
  * @route DELETE /api/photos/:id
  * @access Private (Admin only)
  */
 export const deletePhoto = asyncHandler(async (req: Request, res: Response) => {
-  try {
-    const photo = await PhotoModel.findById(req.params.id);
+  const photo = await PhotoModel.findById(req.params.id);
 
-    if (!photo) {
-      res.status(404);
-      throw new Error("Photo not found");
-    }
-
-    // Delete from Cloudinary
-    try {
-      await cloudinary.uploader.destroy(photo.cloudinaryPublicId);
-    } catch (cloudinaryError: any) {
-      logger.warn(
-        `Failed to delete from Cloudinary: ${cloudinaryError.message}`
-      );
-      // Continue with database deletion even if Cloudinary fails
-    }
-
-    // Delete from database
-    await PhotoModel.findByIdAndDelete(req.params.id);
-
-    res.status(200).json({
-      success: true,
-      message: "Photo deleted successfully",
-    });
-  } catch (error: any) {
-    logger.error(`Error deleting photo: ${error.message}`);
-    res.status(500).json({
-      success: false,
-      message: error.message || "Error deleting photo",
-    });
+  if (!photo) {
+    res.status(404);
+    throw new Error("Photo not found");
   }
+
+  // Delete all images from Cloudinary
+  const deletePromises = photo.images.map((image) =>
+    cloudinary.uploader.destroy(image.cloudinaryPublicId)
+  );
+
+  await Promise.allSettled(deletePromises);
+
+  // Delete from database
+  await PhotoModel.findByIdAndDelete(req.params.id);
+
+  res.status(200).json({
+    success: true,
+    message: "Photo deleted successfully",
+  });
 });
 
 /**
- * Get photo categories with counts
- * @route GET /api/photos/categories
+ * Get photos by category (Public)
+ * @route GET /api/photos/category/:category
  * @access Public
  */
-export const getCategories = asyncHandler(
+export const getPhotosByCategory = asyncHandler(
   async (req: Request, res: Response) => {
-    try {
-      const categories = await PhotoModel.aggregate([
-        { $match: { isActive: true } },
-        { $group: { _id: "$category", count: { $sum: 1 } } },
-        { $sort: { count: -1 } },
-      ]);
+    const { category } = req.params;
+    const { limit = 12 } = req.query;
 
-      const formattedCategories = categories.map((cat) => ({
-        id: cat._id,
-        name: cat._id
-          .replace(/-/g, " ")
-          .replace(/\b\w/g, (l: string) => l.toUpperCase()),
-        count: cat.count,
-      }));
+    const limitNum = parseInt(limit as string, 10);
 
-      res.status(200).json({
-        success: true,
-        data: formattedCategories,
-      });
-    } catch (error: any) {
-      logger.error(`Error getting categories: ${error.message}`);
-      res.status(500).json({
-        success: false,
-        message: "Error fetching categories",
-      });
+    const photos = await PhotoModel.find({
+      category,
+      isActive: true,
+    })
+      .populate("category", "name type")
+      .sort({ createdAt: -1 })
+      .limit(limitNum)
+      .lean();
+
+    const total = await PhotoModel.countDocuments({
+      category,
+      isActive: true,
+    });
+
+    res.status(200).json({
+      success: true,
+      data: {
+        photos,
+        pagination: {
+          current: 1,
+          pages: Math.ceil(total / limitNum),
+          total,
+          hasNext: total > limitNum,
+          hasPrev: false,
+        },
+      },
+    });
+  }
+);
+
+/**
+ * Search photos (Public)
+ * @route GET /api/photos/search
+ * @access Public
+ */
+export const searchPhotos = asyncHandler(
+  async (req: Request, res: Response) => {
+    const { search, limit = 12 } = req.query;
+
+    if (!search) {
+      res.status(400);
+      throw new Error("Search query is required");
     }
+
+    const limitNum = parseInt(limit as string, 10);
+
+    const filter = {
+      isActive: true,
+      $or: [
+        { title: { $regex: search, $options: "i" } },
+        { description: { $regex: search, $options: "i" } },
+        { location: { $regex: search, $options: "i" } },
+        { "images.alt": { $regex: search, $options: "i" } },
+      ],
+    };
+
+    const photos = await PhotoModel.find(filter)
+      .populate("category", "name type")
+      .sort({ createdAt: -1 })
+      .limit(limitNum)
+      .lean();
+
+    const total = await PhotoModel.countDocuments(filter);
+
+    res.status(200).json({
+      success: true,
+      data: {
+        photos,
+        pagination: {
+          current: 1,
+          pages: Math.ceil(total / limitNum),
+          total,
+          hasNext: total > limitNum,
+          hasPrev: false,
+        },
+      },
+    });
   }
 );

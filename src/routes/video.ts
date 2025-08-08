@@ -7,7 +7,11 @@ import {
   createVideo,
   updateVideo,
   deleteVideo,
-  getCategories,
+  getVideoCategories,
+  getVideoCategoriesWithCounts,
+  createVideoCategory,
+  updateVideoCategory,
+  deleteVideoCategory,
 } from "../controllers/videoController";
 import { protect } from "../middleware/authMiddleware";
 import { apiLimiter } from "../middleware/rateLimitMiddleware";
@@ -17,9 +21,11 @@ const router = express.Router();
 
 // Public routes
 router.get("/", apiLimiter, getVideos);
-router.get("/categories", getCategories);
-
 router.get("/:id", apiLimiter, getVideoById);
+
+// Category routes (public)
+router.get("/categories", apiLimiter, getVideoCategories);
+router.get("/categories/counts", apiLimiter, getVideoCategoriesWithCounts);
 
 // Protected routes (Admin only)
 router.use(protect); // All routes below require authentication
@@ -35,7 +41,21 @@ router.post(
   uploadVideo
 );
 router.post("/", createVideo);
-router.put("/:id", updateVideo);
+
+router.put(
+  "/:id",
+  videoUploadConfig.fields([
+    { name: "video", maxCount: 1 },
+    { name: "thumbnail", maxCount: 1 },
+  ]),
+  handleMulterError,
+  updateVideo
+);
 router.delete("/:id", deleteVideo);
+
+// Category management (protected)
+router.post("/categories", createVideoCategory);
+router.put("/categories/:id", updateVideoCategory);
+router.delete("/categories/:id", deleteVideoCategory);
 
 export default router;

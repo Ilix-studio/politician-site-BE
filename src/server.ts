@@ -14,6 +14,7 @@ import photosRoutes from "./routes/photos";
 import videosRoutes from "./routes/video";
 import pressRoutes from "./routes/press";
 import visitorRoutes from "./routes/visitor";
+import categoryRoutes from "./routes/category";
 
 // Create Express application
 const app: Application = express();
@@ -65,6 +66,8 @@ app.use("/api/photos", photosRoutes);
 app.use("/api/videos", videosRoutes);
 app.use("/api/press", pressRoutes);
 app.use("/api/visitor", visitorRoutes);
+app.use("/api/categories", categoryRoutes);
+
 // Global error handling middleware
 app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
   console.error("Global error handler:", {
@@ -91,4 +94,3 @@ app.use(errorHandler);
 
 // Connect to MongoDB
 connectDB();
-//Something was wrong
