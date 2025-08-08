@@ -94,4 +94,3 @@ app.use(errorHandler);
 
 // Connect to MongoDB
 connectDB();
-//Something was wrong
