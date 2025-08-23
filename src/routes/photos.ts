@@ -7,6 +7,7 @@ import {
   getPhoto,
   updatePhoto,
   deletePhoto,
+  updatePhotoWithFile,
 } from "../controllers/photoController";
 import { protect } from "../middleware/authMiddleware";
 import { photoUploadConfig, handleMulterError } from "../config/multerConfig";
@@ -38,7 +39,16 @@ router.post(
   uploadMultiplePhotos
 );
 
-router.put("/:id", protect, updatePhoto);
+router.patch("/:id", protect, updatePhoto);
+// Update photo with file upload (form-data)
+router.patch(
+  "/:id/upload",
+  protect,
+  photoUploadConfig.single("photo"),
+  handleMulterError,
+  updatePhotoWithFile
+);
+
 router.delete("/:id", protect, deletePhoto);
 
 export default router;

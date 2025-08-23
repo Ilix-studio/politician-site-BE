@@ -416,7 +416,7 @@ export const uploadMultiplePhotos = asyncHandler(
 
 /**
  * Update photo
- * @route PUT /api/photos/:id
+ * @route PATCH /api/photos/:id
  * @access Private (Admin only)
  */
 export const updatePhoto = asyncHandler(async (req: Request, res: Response) => {
@@ -501,6 +501,131 @@ export const updatePhoto = asyncHandler(async (req: Request, res: Response) => {
     data: updatedPhoto,
   });
 });
+
+/**
+ * Update photo with file upload
+ * @route PATCH /api/photos/:id/upload
+ * @access Private (Admin only)
+ */
+export const updatePhotoWithFile = asyncHandler(
+  async (req: Request, res: Response) => {
+    const photo = await PhotoModel.findById(req.params.id);
+
+    if (!photo) {
+      res.status(404);
+      throw new Error("Photo not found");
+    }
+
+    const { title, category, date, location, description, isActive, alt } =
+      req.body;
+
+    // Handle new image upload if file is provided
+    if (req.file) {
+      try {
+        // Upload to Cloudinary
+        const cloudinaryResult = await new Promise((resolve, reject) => {
+          cloudinary.uploader
+            .upload_stream(
+              {
+                folder: "prapti-foundation-images",
+                resource_type: "image",
+                transformation: [
+                  { width: 1200, height: 800, crop: "limit" },
+                  { quality: "auto" },
+                  { format: "auto" },
+                ],
+              },
+              (error, result) => {
+                if (error) reject(error);
+                else resolve(result);
+              }
+            )
+            .end(req.file!.buffer);
+        });
+
+        const uploadResult = cloudinaryResult as any;
+
+        // Add new image to existing images array
+        const newImage = {
+          src: uploadResult.secure_url,
+          alt: alt || photo.title,
+          cloudinaryPublicId: uploadResult.public_id,
+        };
+
+        photo.images.push(newImage);
+      } catch (error) {
+        console.error("Image upload failed:", error);
+        res.status(500);
+        throw new Error("Failed to upload image");
+      }
+    }
+
+    // Validate and resolve category if provided
+    if (category !== undefined) {
+      console.log("Received category value:", category, typeof category);
+
+      if (!category || typeof category !== "string") {
+        res.status(400);
+        throw new Error("Category must be a string");
+      }
+
+      let categoryDoc;
+      let categoryId = category;
+
+      try {
+        // First attempt: find by ObjectId
+        categoryDoc = await CategoryModel.findOne({
+          _id: category,
+          type: "photo",
+        });
+      } catch (error) {
+        // If ObjectId cast fails, category might be a name instead of ID
+        console.log("ObjectId cast failed, trying to find by name:", category);
+      }
+
+      // If not found by ID, try to find by name
+      if (!categoryDoc) {
+        categoryDoc = await CategoryModel.findOne({
+          name: category,
+          type: "photo",
+        });
+
+        if (categoryDoc) {
+          console.log("Found category by name, using ID:", categoryDoc._id);
+          categoryId = categoryDoc._id.toString();
+        }
+      }
+
+      if (!categoryDoc) {
+        res.status(400);
+        throw new Error(
+          `Invalid photo category: ${category}. Please ensure the category exists and is of type 'photo'.`
+        );
+      }
+
+      // Update with resolved category ID
+      photo.category = new Types.ObjectId(categoryDoc._id);
+    }
+
+    // Update other fields
+    if (title !== undefined) photo.title = title;
+    if (date !== undefined) photo.date = new Date(date);
+    if (location !== undefined) photo.location = location || undefined;
+    if (description !== undefined) photo.description = description || undefined;
+    if (isActive !== undefined)
+      photo.isActive = isActive === "true" || isActive === true;
+
+    const updatedPhoto = await photo.save();
+    await updatedPhoto.populate("category", "name type");
+
+    res.status(200).json({
+      success: true,
+      message: "Photo updated successfully",
+      data: updatedPhoto,
+    });
+  }
+);
+
 /**
  * Delete photo
  * @route DELETE /api/photos/:id
