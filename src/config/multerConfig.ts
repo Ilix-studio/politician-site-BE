@@ -1,9 +1,8 @@
-// Updated with Press support
 import multer from "multer";
 import { Request } from "express";
 
-// File filter for press images
-const pressImageFileFilter = (
+// Enhanced file filter for multiple image types
+const imageFileFilter = (
   req: Request,
   file: Express.Multer.File,
   cb: multer.FileFilterCallback
@@ -17,6 +16,7 @@ const pressImageFileFilter = (
       "image/gif",
       "image/bmp",
       "image/tiff",
+      "image/svg+xml",
     ];
 
     if (allowedImageTypes.includes(file.mimetype)) {
@@ -25,131 +25,94 @@ const pressImageFileFilter = (
       cb(
         new Error(
           `Image format ${file.mimetype} not supported. 
-          Supported formats: JPEG, PNG, WebP, GIF, BMP, TIFF`
+          Supported formats: JPEG, PNG, WebP, GIF, BMP, TIFF, SVG`
         )
       );
     }
   } else {
-    cb(new Error("Only image files are allowed for press articles"));
+    cb(new Error("Only image files are allowed"));
   }
 };
 
-// Video file filter for existing video uploads
-const videoFileFilter = (
-  req: Request,
-  file: Express.Multer.File,
-  cb: multer.FileFilterCallback
-) => {
-  if (file.fieldname === "video") {
-    if (file.mimetype.startsWith("video/")) {
-      const allowedVideoTypes = [
-        "video/mp4",
-        "video/mov",
-        "video/avi",
-        "video/wmv",
-        "video/flv",
-        "video/webm",
-        "video/mkv",
-      ];
-
-      if (allowedVideoTypes.includes(file.mimetype)) {
-        cb(null, true);
-      } else {
-        cb(
-          new Error(
-            `Video format ${file.mimetype} not supported. 
-            Supported formats: MP4, MOV, AVI, WMV, FLV, WebM, MKV`
-          )
-        );
-      }
-    } else {
-      cb(new Error("Video file is required for video field"));
-    }
-  } else if (file.fieldname === "thumbnail") {
-    if (file.mimetype.startsWith("image/")) {
-      const allowedImageTypes = [
-        "image/jpeg",
-        "image/jpg",
-        "image/png",
-        "image/webp",
-        "image/gif",
-        "image/bmp",
-        "image/tiff",
-      ];
-
-      if (allowedImageTypes.includes(file.mimetype)) {
-        cb(null, true);
-      } else {
-        cb(
-          new Error(
-            `Image format ${file.mimetype} not supported. 
-            Supported formats: JPEG, PNG, WebP, GIF, BMP, TIFF`
-          )
-        );
-      }
-    } else {
-      cb(new Error("Image file is required for thumbnail field"));
-    }
-  } else {
-    cb(new Error("Unexpected field name"));
-  }
-};
-
-// Multer configuration for press image uploads
-export const pressUploadConfig = multer({
-  storage: multer.memoryStorage(), // Store in memory for direct Cloudinary upload
+// Enhanced multer configuration for photo uploads
+export const photoUploadConfig = multer({
+  storage: multer.memoryStorage(),
   limits: {
-    fileSize: 10 * 1024 * 1024, // 10MB limit for press images
-    files: 1,
+    fileSize: 10 * 1024 * 1024, // 10MB limit per image
+    files: 10, // Maximum 10 images for photos
   },
-  fileFilter: pressImageFileFilter,
+  fileFilter: imageFileFilter,
 });
 
-// Multer configuration for video uploads
+// Enhanced multer configuration for press uploads
+export const pressUploadConfig = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 10 * 1024 * 1024, // 10MB limit per image
+    files: 5, // Maximum 5 images for press articles
+  },
+  fileFilter: imageFileFilter,
+});
+
+// Video upload config remains the same
 export const videoUploadConfig = multer({
   storage: multer.memoryStorage(),
   limits: {
     fileSize: 500 * 1024 * 1024, // 500MB limit for videos
     files: 2, // Maximum 2 files (video + thumbnail)
   },
-  fileFilter: videoFileFilter,
-});
-
-// Multer configuration for photo uploads
-export const photoUploadConfig = multer({
-  storage: multer.memoryStorage(),
-  limits: {
-    fileSize: 10 * 1024 * 1024, // 10MB limit for photos
-    files: 1,
-  },
   fileFilter: (
     req: Request,
     file: Express.Multer.File,
     cb: multer.FileFilterCallback
   ) => {
-    if (file.mimetype.startsWith("image/")) {
-      const allowedImageTypes = [
-        "image/jpeg",
-        "image/jpg",
-        "image/png",
-        "image/webp",
-        "image/gif",
-        "image/bmp",
-        "image/tiff",
-      ];
+    if (file.fieldname === "video") {
+      if (file.mimetype.startsWith("video/")) {
+        const allowedVideoTypes = [
+          "video/mp4",
+          "video/mov",
+          "video/avi",
+          "video/wmv",
+          "video/flv",
+          "video/webm",
+          "video/mkv",
+        ];
 
-      if (allowedImageTypes.includes(file.mimetype)) {
-        cb(null, true);
+        if (allowedVideoTypes.includes(file.mimetype)) {
+          cb(null, true);
+        } else {
+          cb(new Error(`Video format ${file.mimetype} not supported`));
+        }
       } else {
-        cb(new Error(`Image format ${file.mimetype} not supported`));
+        cb(new Error("Video file is required for video field"));
+      }
+    } else if (file.fieldname === "thumbnail") {
+      if (file.mimetype.startsWith("image/")) {
+        const allowedImageTypes = [
+          "image/jpeg",
+          "image/jpg",
+          "image/png",
+          "image/webp",
+          "image/gif",
+          "image/bmp",
+          "image/tiff",
+        ];
+
+        if (allowedImageTypes.includes(file.mimetype)) {
+          cb(null, true);
+        } else {
+          cb(new Error(`Image format ${file.mimetype} not supported`));
+        }
+      } else {
+        cb(new Error("Image file is required for thumbnail field"));
       }
     } else {
-      cb(new Error("Only image files are allowed"));
+      cb(new Error("Unexpected field name"));
     }
   },
 });
 
-// Error handler middleware for multer errors
+// Enhanced error handler for multer errors
 export const handleMulterError = (
   error: any,
   req: Request,
@@ -170,7 +133,13 @@ export const handleMulterError = (
         return res.status(400).json({
           success: false,
           message: "Too many files",
-          error: "Maximum files allowed exceeded",
+          error: `Maximum ${
+            req.route.path.includes("photo")
+              ? "10"
+              : req.route.path.includes("press")
+              ? "5"
+              : "2"
+          } files allowed`,
         });
       case "LIMIT_UNEXPECTED_FILE":
         return res.status(400).json({
