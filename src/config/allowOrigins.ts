@@ -5,6 +5,8 @@ const allowOrigins = [
   "https://www.biswajitphukan.in",
   "https://biswajitphukan.in/admin/login",
   "https://biswajitphukan.in/admin/dashboard",
+  "https://biswajitphukan.com/",
+  "https://www.biswajitphukan.com/",
 ];
 
 // Add environment-specific origins
