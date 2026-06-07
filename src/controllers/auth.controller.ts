@@ -53,10 +53,11 @@ export const loginAdmin = asyncHandler(
         id: admin._id,
         name: admin.name,
         email: admin.email,
+        role: admin.role, // ensure adminModel has a role field defaulting to SUPER_ADMIN
         token,
       },
     });
-  }
+  },
 );
 
 /**
@@ -76,5 +77,5 @@ export const logoutAdmin = asyncHandler(
       success: true,
       message: "Logout successful",
     });
-  }
+  },
 );

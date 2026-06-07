@@ -3,6 +3,7 @@ import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import { Secret, SignOptions } from "jsonwebtoken";
 import dotenv from "dotenv";
+import { UserRole } from "../constants/roles";
 
 // Load environment variables
 dotenv.config();
@@ -14,12 +15,12 @@ export interface IAdmin extends Document {
   name: string;
   email: string;
   password: string;
+  role: UserRole;
   createdAt: Date;
   updatedAt: Date;
   matchPassword: (enteredPassword: string) => Promise<boolean>;
   getSignedJwtToken: () => string;
 }
-
 const adminSchema: Schema = new Schema(
   {
     name: {
@@ -48,7 +49,7 @@ const adminSchema: Schema = new Schema(
   },
   {
     timestamps: true,
-  }
+  },
 );
 
 adminSchema.pre<IAdmin>("save", async function (next) {
@@ -72,7 +73,7 @@ adminSchema.pre<IAdmin>("save", async function (next) {
 
 // Match user entered password to hashed password in database
 adminSchema.methods.matchPassword = async function (
-  enteredPassword: string
+  enteredPassword: string,
 ): Promise<boolean> {
   return await bcrypt.compare(enteredPassword, this.password);
 };

@@ -15,6 +15,8 @@ import videosRoutes from "./routes/video";
 import pressRoutes from "./routes/press";
 import visitorRoutes from "./routes/visitor";
 import categoryRoutes from "./routes/category";
+//
+import editorRoutes from "./routes/editor";
 
 // Create Express application
 const app: Application = express();
@@ -67,6 +69,8 @@ app.use("/api/videos", videosRoutes);
 app.use("/api/press", pressRoutes);
 app.use("/api/visitor", visitorRoutes);
 app.use("/api/categories", categoryRoutes);
+//
+app.use("/api/editor", editorRoutes);
 
 // Global error handling middleware
 app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
